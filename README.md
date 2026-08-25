@@ -1,7 +1,23 @@
+---
+title: Ligature
+emoji: 🕸️
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Ligature
 
 Graph-native sports biometric intelligence. See [CLAUDE.md](./CLAUDE.md) for
 the full product/architecture writeup and graph schema.
+
+> **Live demo**: this repo doubles as a Hugging Face Space (the frontmatter
+> above is Spaces' own config format, read only by Spaces — GitHub just
+> renders it as a plain block). See [deploy/huggingface/README.md
+> ](./deploy/huggingface/README.md) for how it's deployed and how to stand
+> up your own copy. Everything below this point is the normal project docs.
 
 This repo currently implements **all 7 build order steps**:
 
