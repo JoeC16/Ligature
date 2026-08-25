@@ -25,20 +25,44 @@ echo "Setting initial Neo4j password..."
 neo4j-admin dbms set-initial-password "${NEO4J_PASSWORD}" \
   || echo "Initial password already set (non-fresh /data) — continuing with the existing one."
 
+# Neo4j's default memory sizing assumes it owns the whole machine, which
+# is wrong on a free-tier host (Render's free instance is 512MB RAM total,
+# shared with the Python process below). Pin it to a small, explicit
+# footprint instead of letting it autosize past what's actually available
+# and get OOM-killed. This dataset is a few hundred demo nodes/edges, not
+# a real production graph, so a small heap/page cache is genuinely enough
+# -- this isn't a compromise specific to being memory-constrained.
+NEO4J_CONF="${NEO4J_HOME:-/var/lib/neo4j}/conf/neo4j.conf"
+sed -i \
+  -e '/^server\.memory\.heap\.initial_size=/d' \
+  -e '/^server\.memory\.heap\.max_size=/d' \
+  -e '/^server\.memory\.pagecache\.size=/d' \
+  "${NEO4J_CONF}"
+{
+  echo "server.memory.heap.initial_size=150m"
+  echo "server.memory.heap.max_size=150m"
+  echo "server.memory.pagecache.size=32m"
+} >> "${NEO4J_CONF}"
+
 echo "Starting Neo4j..."
 neo4j start
 
 echo "Waiting for Neo4j to accept connections..."
-for i in $(seq 1 60); do
+# A generous budget, not a guess: Render's free tier gives this container
+# 0.1 vCPU, and a cold JVM boot (class loading, JIT warmup) plus first-run
+# database initialization can genuinely take a couple of minutes under
+# that much throttling -- a short timeout here would misreport a slow
+# boot as a real failure.
+for i in $(seq 1 90); do
   if cypher-shell -u "${NEO4J_USER}" -p "${NEO4J_PASSWORD}" "RETURN 1" >/dev/null 2>&1; then
     echo "Neo4j is up."
     break
   fi
-  if [ "$i" -eq 60 ]; then
-    echo "Neo4j never came up after 120s — aborting." >&2
+  if [ "$i" -eq 90 ]; then
+    echo "Neo4j never came up after 270s — aborting." >&2
     exit 1
   fi
-  sleep 2
+  sleep 3
 done
 
 echo "Seeding demo data..."
