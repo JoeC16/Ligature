@@ -5,6 +5,9 @@ Usage:
 
 Rerunnable: wipes the graph before reloading, and generation is seeded
 (see generators.SEED) so every run produces identical data.
+
+Loads raw data only — PRECEDED and SIMILAR_PATTERN_TO are exclusively
+computed by pattern_engine/run_pattern_engine.py, run that next.
 """
 
 from __future__ import annotations
@@ -16,14 +19,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(REPO_ROOT))
 import generators  # noqa: E402
-import hamstring_pattern  # noqa: E402
 from common import db  # noqa: E402
 
 write_nodes = db.write_nodes
 write_edges = db.write_edges
 
 
-def load(session, data: dict, pattern_edges: dict):
+def load(session, data: dict):
     # --- Nodes ---
     write_nodes(session, "Athlete", data["athletes"], exclude_keys={"baseline"})
     write_nodes(session, "Session", data["sessions"])
@@ -121,28 +123,6 @@ def load(session, data: dict, pattern_edges: dict):
         edges["has_note"],
     )
 
-    # --- Pattern-engine stand-in edges (see hamstring_pattern.py) ---
-    write_edges(
-        session,
-        """
-        UNWIND $rows AS row
-        MATCH (m:SessionMetric {id: row.metric_id}), (i:Injury {id: row.injury_id})
-        MERGE (m)-[p:PRECEDED]->(i)
-        SET p.lag_days = row.lag_days, p.correlation_strength = row.correlation_strength
-        """,
-        pattern_edges["preceded"],
-    )
-    write_edges(
-        session,
-        """
-        UNWIND $rows AS row
-        MATCH (i1:Injury {id: row.injury_id_from}), (i2:Injury {id: row.injury_id_to})
-        MERGE (i1)-[s:SIMILAR_PATTERN_TO]->(i2)
-        SET s.shared_metrics = row.shared_metrics, s.confidence = row.confidence
-        """,
-        pattern_edges["similar_pattern_to"],
-    )
-
 
 def main():
     driver = db.connect()
@@ -156,10 +136,9 @@ def main():
 
         print("Generating synthetic season data...")
         data = generators.generate_all()
-        pattern_edges = hamstring_pattern.build_pattern_edges(data)
 
         print("Writing to Neo4j...")
-        load(session, data, pattern_edges)
+        load(session, data)
 
         db.print_summary(session)
 

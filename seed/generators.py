@@ -8,11 +8,11 @@ of injuries, and treatment/rehab/outcome chains for a few of them.
 
 Two of the injuries (both hamstring strains, different athletes) get a
 deliberately engineered spike in load metrics and dip in wellness in the
-7-10 days before onset. This module bakes that spike into the metric/
-wellness values and records which SessionMetric ids were part of each
-athlete's lead-up window; `hamstring_pattern.py` uses those ids to write
-the PRECEDED / SIMILAR_PATTERN_TO edges that stand in for the pattern
-engine's output (see that file's docstring).
+7-10 days before onset — ground truth for pattern_engine/ to rediscover
+independently once it runs against the seeded graph. This module bakes
+that spike into the metric/wellness values and records which SessionMetric
+ids were part of each athlete's lead-up window, for tests to check the
+engine's PRECEDED output against.
 
 All randomness is seeded, so re-running this module produces identical
 output — that's what makes the seed script safely rerunnable.
@@ -137,8 +137,9 @@ def make_metrics_and_wellness(
     """Returns (session_metrics, wellness_entries, spiked_metric_ids_by_injury).
 
     spiked_metric_ids_by_injury maps injury_leadins[i]['injury_id'] -> the
-    SessionMetric ids generated inside that injury's lead-up window, for
-    hamstring_pattern.py to wire PRECEDED edges from.
+    SessionMetric ids generated inside that injury's lead-up window — the
+    ground truth pattern_engine/'s own PRECEDED computation is checked
+    against in tests, since neither reads the other.
     """
     spike_windows = _spike_windows(injury_leadins)
     injury_id_by_window_key = {
@@ -316,8 +317,7 @@ def make_injuries_and_treatment_chains(
 
     # The deliberate hamstring lead-up: 8 days of spiked load/dipped
     # wellness before each onset. This is what make_metrics_and_wellness
-    # bakes into the data, and what hamstring_pattern.py points PRECEDED
-    # edges at.
+    # bakes into the data for pattern_engine/ to independently rediscover.
     injury_leadins = [
         {
             "injury_id": "injury-athlete1-hamstring",
