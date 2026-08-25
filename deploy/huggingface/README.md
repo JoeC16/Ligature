@@ -1,5 +1,12 @@
 # Deploying to Hugging Face Spaces
 
+> **As of a July 2026 policy change, Docker Spaces need a paid PRO plan on
+> a personal account** — this path isn't free anymore. See
+> [`deploy/render/README.md`](../render/README.md) for the current free
+> option (same `Dockerfile`, deploys straight from GitHub, no HF token
+> needed). Keeping this doc for anyone who already has PRO or whose plan
+> includes it.
+
 A free, public demo URL for Ligature — Neo4j and the app bundled into one
 container (`Dockerfile` at the repo root), because a Space gets exactly one.
 This is a demo convenience, not how the project is meant to run day to day —
