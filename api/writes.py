@@ -1,6 +1,6 @@
-"""Cypher writes for the three POST endpoints — reuses common/db.py's
-MERGE-based write_nodes/write_edges, same as every other step, even though
-a fresh uuid4 id colliding is practically impossible."""
+"""Cypher writes for the POST endpoints — reuses common/db.py's MERGE-based
+write_nodes/write_edges, same as every other step, even though a fresh
+uuid4 id colliding is practically impossible."""
 
 from __future__ import annotations
 
@@ -91,3 +91,10 @@ def create_outcome(session, rehab_session_id: str, result: str, outcome_date: da
         [{"rehab_id": rehab_session_id, "outcome_id": outcome_id}],
     )
     return outcome_id
+
+
+def resolve_flag(session, flag_id: str, resolution_state: str, notes: str | None) -> None:
+    row = {"id": flag_id, "resolution_state": resolution_state}
+    if notes:
+        row["resolution_notes"] = notes
+    db.write_nodes(session, "Flag", [row])

@@ -138,32 +138,31 @@ def _deviating_wellness_fields(w: dict, baselines: dict[str, tuple[float, float]
     return deviating
 
 
-def compute_injury_pattern(injury: dict, athlete_metrics: list[dict], athlete_wellness: list[dict]) -> dict:
-    """Returns {"preceded": [...], "signature": {field: avg_z}} for one injury."""
-    injury_date = _d(injury["date"])
+def compute_signature_at(reference_date: date, athlete_metrics: list[dict], athlete_wellness: list[dict]) -> dict:
+    """The reusable core: deviation signature for the LOOKBACK_DAYS window
+    ending just before `reference_date`, against that athlete's own
+    baseline. Anchored at an injury's onset date, this is what
+    compute_injury_pattern uses below; anchored at "today", this is what
+    flagging_agent/ uses to score an in-progress rolling window — same
+    math, different reference point.
 
-    window_metrics, baseline_metrics = _split_window(athlete_metrics, injury_date)
-    window_wellness, baseline_wellness = _split_window(athlete_wellness, injury_date)
+    Returns {"deviating_metric_rows": [(metric_row, deviating_fields), ...],
+    "signature": {field: avg_z}}.
+    """
+    window_metrics, baseline_metrics = _split_window(athlete_metrics, reference_date)
+    window_wellness, baseline_wellness = _split_window(athlete_wellness, reference_date)
 
     metric_baselines = _metric_baselines_by_type(baseline_metrics)
     wellness_baselines = _wellness_baseline(baseline_wellness)
 
-    preceded = []
+    deviating_metric_rows = []
     metric_signature: dict[str, list[float]] = {}
 
     for m in window_metrics:
         deviating = _deviating_metric_fields(m, metric_baselines.get(m["type"], {}))
         if len(deviating) < MIN_METRIC_FIELDS:
             continue
-        lag_days = (injury_date - _d(m["date"])).days
-        preceded.append(
-            {
-                "metric_id": m["id"],
-                "injury_id": injury["id"],
-                "lag_days": lag_days,
-                "correlation_strength": _confidence_from_zs([abs(z) for z in deviating.values()]),
-            }
-        )
+        deviating_metric_rows.append((m, deviating))
         for f, z in deviating.items():
             metric_signature.setdefault(f, []).append(z)
 
@@ -185,7 +184,36 @@ def compute_injury_pattern(injury: dict, athlete_metrics: list[dict], athlete_we
             signature[f] = zs
 
     avg_signature = {f: sum(zs) / len(zs) for f, zs in signature.items()}
-    return {"preceded": preceded, "signature": avg_signature}
+    return {"deviating_metric_rows": deviating_metric_rows, "signature": avg_signature}
+
+
+def compute_injury_pattern(injury: dict, athlete_metrics: list[dict], athlete_wellness: list[dict]) -> dict:
+    """Returns {"preceded": [...], "signature": {field: avg_z}} for one injury."""
+    injury_date = _d(injury["date"])
+    result = compute_signature_at(injury_date, athlete_metrics, athlete_wellness)
+
+    preceded = []
+    for m, deviating in result["deviating_metric_rows"]:
+        lag_days = (injury_date - _d(m["date"])).days
+        preceded.append(
+            {
+                "metric_id": m["id"],
+                "injury_id": injury["id"],
+                "lag_days": lag_days,
+                "correlation_strength": _confidence_from_zs([abs(z) for z in deviating.values()]),
+            }
+        )
+
+    return {"preceded": preceded, "signature": result["signature"]}
+
+
+def jaccard(sig_a: set[str], sig_b: set[str]) -> float | None:
+    """Jaccard similarity of two deviating-field sets, or None if both are
+    empty. Shared by cluster_injuries below and flagging_agent/agent.py."""
+    union = sig_a | sig_b
+    if not union:
+        return None
+    return round(len(sig_a & sig_b) / len(union), 2)
 
 
 def cluster_injuries(injuries: list[dict], signatures: dict[str, dict[str, float]]) -> list[dict]:
@@ -203,11 +231,8 @@ def cluster_injuries(injuries: list[dict], signatures: dict[str, dict[str, float
             if not sig_j:
                 continue
             shared = sig_i & sig_j
-            union = sig_i | sig_j
-            if not union:
-                continue
-            confidence = round(len(shared) / len(union), 2)
-            if confidence >= SIMILARITY_THRESHOLD and shared:
+            confidence = jaccard(sig_i, sig_j)
+            if confidence is not None and confidence >= SIMILARITY_THRESHOLD and shared:
                 edges.append(
                     {
                         "injury_id_from": i["id"],

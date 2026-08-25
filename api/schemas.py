@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 TreatmentType = Literal["physio session", "strapping", "massage", "injection", "rest day"]
 OutcomeResult = Literal["clean_return", "re_aggravation"]
+FlagResolution = Literal["actioned", "dismissed"]
 
 
 class OpenInjury(BaseModel):
@@ -79,3 +80,25 @@ class OutcomeCreate(BaseModel):
 
 class OutcomeCreated(BaseModel):
     id: str
+
+
+class UnreviewedFlag(BaseModel):
+    id: str
+    athlete_id: str
+    athlete_name: str
+    date: str
+    confidence: float
+    shared_metrics: list[str]
+    matched_injury_id: str
+    matched_injury_type: str
+    matched_injury_athlete_name: str
+
+
+class FlagResolve(BaseModel):
+    resolution_state: FlagResolution
+    notes: str | None = None
+
+
+class FlagResolved(BaseModel):
+    id: str
+    resolution_state: FlagResolution

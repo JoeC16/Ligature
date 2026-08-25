@@ -1,6 +1,6 @@
-"""Cypher for the GET endpoints that back the POST endpoints' dropdowns —
-which injuries still need a treatment, which treatments still need a
-rehab session, which rehab sessions still need an outcome.
+"""Cypher for the GET endpoints — the "what's still open" reads that back
+the treatment/rehab/outcome POST endpoints' dropdowns, plus the flags a
+physio still needs to review (build order step 6's resolution write-back).
 """
 
 from __future__ import annotations
@@ -63,4 +63,21 @@ def rehab_session_exists(session, rehab_session_id: str) -> bool:
     result = session.run(
         "MATCH (r:RehabSession {id: $id}) RETURN r.id AS id", id=rehab_session_id
     ).single()
+    return result is not None
+
+
+def fetch_unreviewed_flags(session) -> list[dict]:
+    return session.run(
+        """
+        MATCH (a:Athlete)-[:CURRENTLY]->(f:Flag {resolution_state: 'unreviewed'})-[rel:MATCHES]->(i:Injury)<-[:SUSTAINED]-(ma:Athlete)
+        RETURN f.id AS id, a.id AS athlete_id, a.name AS athlete_name, f.date AS date, f.confidence AS confidence,
+               rel.shared_metrics AS shared_metrics, i.id AS matched_injury_id, i.type AS matched_injury_type,
+               ma.name AS matched_injury_athlete_name
+        ORDER BY f.date DESC
+        """
+    ).data()
+
+
+def flag_exists(session, flag_id: str) -> bool:
+    result = session.run("MATCH (f:Flag {id: $id}) RETURN f.id AS id", id=flag_id).single()
     return result is not None

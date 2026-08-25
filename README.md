@@ -3,7 +3,7 @@
 Graph-native sports biometric intelligence. See [CLAUDE.md](./CLAUDE.md) for
 the full product/architecture writeup and graph schema.
 
-This repo currently implements **build order steps 1–5**:
+This repo currently implements **build order steps 1–6**:
 
 1. A local Neo4j instance with the schema as Cypher constraints, seeded with
    one season of realistic synthetic data for 5 athletes — sessions,
@@ -30,6 +30,16 @@ This repo currently implements **build order steps 1–5**:
    schema, runs it, and explains the exact results back in plain language.
    The first LLM integration in the repo — see its own section below for
    the safety properties that come with that.
+6. A flagging agent — for every athlete, compares their current rolling
+   window against every prior injury's now-persisted deviation signature
+   (both their own past injuries and the rest of the squad's, which turns
+   out to be one comparison, not two), and writes a `Flag` when one clears
+   a per-athlete confidence threshold. Run with the right `--as-of` date
+   against the seed data, it flags Noah Rhodes against Allison Hill's
+   already-scored hamstring injury five weeks before Noah's actual
+   onset — the predictive half of the product, not just the retrospective
+   half step 3 built. Resolution write-back (CLAUDE.md's other
+   build-in-from-the-start requirement) reuses the step-4 API.
 
 ## Setup
 
@@ -104,6 +114,57 @@ right injury, the two hamstring injuries get linked by `SIMILAR_PATTERN_TO`,
 and the other 4 injuries (which have no engineered lead-in) get nothing —
 without being told in advance which injuries or which sessions to look at.
 
+It also writes each injury's signature — which fields deviated — onto the
+`Injury` node itself as `deviating_fields`. Step 3 only ever needed that
+signature in memory to build `SIMILAR_PATTERN_TO`; the flagging agent
+(next) needs it persisted, to compare a live athlete's current window
+against.
+
+## Flag athletes at risk
+
+`flagging_agent/run_flagging_agent.py` is CLAUDE.md's step 6: for every
+athlete, score their current rolling window the same way the pattern
+engine scores an injury's lead-up, then compare that signature against
+every prior injury's `deviating_fields` — the athlete's own past injuries
+and every other athlete's compare identically, which is what makes
+CLAUDE.md's "own prior injury signature" and "cross-squad clusters" fall
+out of one loop rather than two. A match clearing the athlete's confidence
+threshold writes a `Flag`, `(Athlete)-[:CURRENTLY]->(Flag)-[:MATCHES]->
+(Injury)` — the specific historical case it matched, always traceable.
+
+**The two things CLAUDE.md says to build in from the start:**
+- **Per-player configurable threshold** — an optional `flag_threshold`
+  property on `Athlete` (falls back to a default if unset):
+  `MATCH (a:Athlete {id: 'athlete-3'}) SET a.flag_threshold = 0.3`
+- **Resolution state on every flag** — `unreviewed` by default, written
+  back once a physio reviews it. Reuses the step-4 API:
+  `GET /flags/unreviewed` to see what needs review, `POST
+  /flags/{id}/resolve` (`resolution_state`: `actioned` or `dismissed`) to
+  close it out. That resolution history is the point per CLAUDE.md — "the
+  long-term asset: ground truth on which flags were real vs. false
+  alarms."
+
+**Reference date matters here.** Default is per-athlete — their own most
+recent data date + 1 day, like a real nightly job. Run that way against
+the *full* seeded season, expect **zero flags**: nobody has a new spike in
+progress at the very end of the synthetic season, so finding nothing is
+the same true-negative discipline step 3 validated, not a bug. To see it
+actually catch something, override the reference date to a point *inside*
+the season where a real precedent already existed:
+
+```bash
+python pattern_engine/run_pattern_engine.py   # persists both hamstring signatures first
+python flagging_agent/run_flagging_agent.py --as-of 2025-02-16
+```
+
+Athlete-2 (Noah Rhodes)'s hamstring injury actually happened on
+2025-02-16 — as of that morning, their rolling window already contains
+all 3 of the real spiking sessions, and athlete-1 (Allison Hill)'s
+hamstring injury from five weeks earlier is already scored. This flags
+Noah against Allison's case, at confidence 1.0 — the predictive version of
+the story step 3 told retrospectively: the graph would have surfaced this
+*before* the injury, not just explained it after.
+
 ## Explore it
 
 A few queries to paste into Neo4j Browser:
@@ -174,7 +235,9 @@ only ever shown the literal rows the query returned.
 `api/app.py` is a small FastAPI app for physios to log `Treatment` →
 `RehabSession` → `Outcome` — CLAUDE.md's build-order step 4 ("simple
 internal form or API endpoint, not polished UI yet; enough to test the
-closed-loop query").
+closed-loop query"). It also serves step 6's flag review endpoints
+(`GET /flags/unreviewed`, `POST /flags/{id}/resolve`) — see "Flag athletes
+at risk" above.
 
 ```bash
 uvicorn api.app:app --reload
@@ -261,17 +324,26 @@ common/
   db.py                   # connect() / run_constraints() / write_nodes() / write_edges(),
                            #   shared by seed_data.py, ingest_data.py, and the API
 api/
-  app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome
+  app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome,
+                            #   plus flag review (GET /flags/unreviewed, POST /flags/{id}/resolve)
   schemas.py                # Pydantic request/response models (dropdowns, 0-10 RPE bound)
-  reads.py                   # Cypher for the "what's still open" GET endpoints
+  reads.py                   # Cypher for the "what's still open" GET endpoints + unreviewed flags
   writes.py                   # Cypher writes, reuses common/db.py
 seed/
   seed_data.py            # wipe-and-reload dev/demo data — entry point, applies schema, loads, prints summary
   generators.py           # synthetic athletes/sessions/metrics/wellness/injuries/treatments
 pattern_engine/
-  run_pattern_engine.py    # entry point — pulls, scores, deletes old pattern edges, rewrites, prints summary
+  run_pattern_engine.py    # entry point — pulls, scores, deletes old pattern edges, rewrites,
+                            #   persists deviating_fields onto each Injury, prints summary
   queries.py                # Cypher pull layer only — no logic
-  engine.py                 # pure computation: baselines, z-scores, PRECEDED + SIMILAR_PATTERN_TO scoring
+  engine.py                 # pure computation: baselines, z-scores, PRECEDED + SIMILAR_PATTERN_TO scoring,
+                             #   compute_signature_at() + jaccard() are reused by flagging_agent/
+flagging_agent/
+  run_flagging_agent.py    # entry point, --as-of optional — pull -> compute -> write Flag/CURRENTLY/MATCHES
+  fetch.py                   # fetch_athletes/fetch_injury_signatures; reuses pattern_engine/queries.py
+                              #   for per-athlete metric/wellness history rather than duplicating it
+                              #   (named fetch.py, not queries.py — see its own docstring for why)
+  agent.py                     # pure computation: per-athlete flag matching against prior signatures
 nl_query/
   ask.py                   # CLI entry point — wires translate -> guard -> execute -> explain, prints answer + Cypher + rows
   schema_context.py         # the fixed schema description given to the LLM (the hallucination-risk bound)

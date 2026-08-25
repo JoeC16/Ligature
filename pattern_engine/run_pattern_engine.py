@@ -10,9 +10,18 @@ SIMILAR_PATTERN_TO edges back. These two edge types are exclusively
 pattern-engine-owned, so each run deletes and recomputes them from the
 graph's current state rather than accumulating stale edges across runs.
 
+Also persists each injury's `deviating_fields` (the signature's field
+names) onto the Injury node itself — the pattern engine already computes
+this signature in memory to build SIMILAR_PATTERN_TO, but never used to
+write it anywhere queryable. flagging_agent/ (build order step 6) needs
+exactly this: "the athlete's own prior injury signature" and "cross-squad
+clusters" to compare a new rolling window against are both just prior
+injuries' persisted signatures. Purely additive — one more property,
+doesn't change PRECEDED/SIMILAR_PATTERN_TO at all.
+
 Safe to run any time after seed_data.py and/or ingest_data.py have loaded
 data — this only reads Session/SessionMetric/WellnessEntry/Injury/Athlete
-and writes PRECEDED/SIMILAR_PATTERN_TO. Nothing else is touched.
+and writes PRECEDED/SIMILAR_PATTERN_TO plus that one Injury property.
 """
 
 from __future__ import annotations
@@ -61,6 +70,13 @@ def main():
         print("Writing new edges...")
         db.write_edges(session, PRECEDED_QUERY, result["preceded"])
         db.write_edges(session, SIMILAR_PATTERN_TO_QUERY, result["similar_pattern_to"])
+
+        print("Persisting each injury's deviation signature (deviating_fields)...")
+        db.write_nodes(
+            session,
+            "Injury",
+            [{"id": injury_id, "deviating_fields": sorted(sig.keys())} for injury_id, sig in result["signatures"].items()],
+        )
 
         print(f"\nPRECEDED edges written: {len(result['preceded'])}")
         for edge in result["preceded"]:
