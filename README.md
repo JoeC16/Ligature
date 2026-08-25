@@ -3,7 +3,7 @@
 Graph-native sports biometric intelligence. See [CLAUDE.md](./CLAUDE.md) for
 the full product/architecture writeup and graph schema.
 
-This repo currently implements **build order steps 1–6**:
+This repo currently implements **all 7 build order steps**:
 
 1. A local Neo4j instance with the schema as Cypher constraints, seeded with
    one season of realistic synthetic data for 5 athletes — sessions,
@@ -40,6 +40,16 @@ This repo currently implements **build order steps 1–6**:
    onset — the predictive half of the product, not just the retrospective
    half step 3 built. Resolution write-back (CLAUDE.md's other
    build-in-from-the-start requirement) reuses the step-4 API.
+7. A frontend graph explorer — vanilla HTML/CSS/JS, no build step, served
+   directly by `api/app.py` so `uvicorn api.app:app` is the one command
+   that runs the whole product. A curated starting view (every `Athlete`,
+   `Injury`, `Flag`, and the edges between them — never the bulk
+   `Session`/`WellnessEntry` nodes), click-to-expand that dispatches on the
+   clicked node's label to pull in exactly what's relevant, search, and —
+   the NL query layer's "full integration" CLAUDE.md deferred to "whenever
+   the frontend arrives" — an ask-in-English box wired straight into
+   step 5's pipeline, with any ids in the answer's result rows fetched and
+   highlighted on the graph.
 
 ## Setup
 
@@ -199,10 +209,12 @@ RETURN w.date, w.sleep_quality, w.hrv, w.soreness ORDER BY w.date
 ## Ask it in English
 
 `nl_query/ask.py` is CLAUDE.md's step 5 — text-to-Cypher against the fixed
-schema above. It's a standalone CLI prototype, per CLAUDE.md's own phasing
-("can be prototyped standalone before full integration") — not wired into
-`api/app.py` yet. This is the first place an LLM enters the system, so it
-needs your own key:
+schema above. It started as a standalone CLI prototype, per CLAUDE.md's own
+phasing ("can be prototyped standalone before full integration"), and as of
+step 7 is also wired into `api/app.py`'s `POST /ask` — the graph explorer's
+ask-in-English box calls the same `ask()` pipeline function this CLI does,
+just returning a structured result instead of printing one. This is the
+first place an LLM enters the system, so it needs your own key:
 
 ```bash
 # add to .env: ANTHROPIC_API_KEY=sk-ant-...
@@ -237,7 +249,7 @@ only ever shown the literal rows the query returned.
 internal form or API endpoint, not polished UI yet; enough to test the
 closed-loop query"). It also serves step 6's flag review endpoints
 (`GET /flags/unreviewed`, `POST /flags/{id}/resolve`) — see "Flag athletes
-at risk" above.
+at risk" above — and, as of step 7, the graph explorer itself at `/`.
 
 ```bash
 uvicorn api.app:app --reload
@@ -273,6 +285,40 @@ query layer (step 5) brings LLM plumbing into the repo; building it here
 would be getting ahead of the pattern this project has followed at every
 step (structured traversal first, LLM only where CLAUDE.md actually calls
 for one).
+
+## The graph explorer (frontend)
+
+CLAUDE.md's final build-order step — "the clickable, visual graph is the
+product's 'aha' moment in any demo." Vanilla HTML/CSS/JS, no bundler, no
+build step (consistent with the rest of the repo: stdlib-heavy Python,
+FastAPI with no templating layer, Swagger UI as step 4's "form"), served
+by the same `api/app.py` process:
+
+```bash
+uvicorn api.app:app --reload
+```
+
+Open **http://localhost:8000/**. The starting view is deliberately small —
+every `Athlete`, `Injury`, and `Flag`, plus the edges between them. Naively
+expanding an athlete would pull in a season's worth of `Session` and
+`WellnessEntry` nodes at once, so `GET /graph/expand/{id}` dispatches on
+the clicked node's label to a curated, type-specific query instead:
+clicking an athlete surfaces their injuries, flags, and only the
+`SessionMetric`s that actually precede one of those injuries (never the
+full training log); clicking an injury surfaces its `PRECEDED` sources,
+`SIMILAR_PATTERN_TO` links, and treatment → rehab → outcome chain, if any.
+Anything else the backend doesn't have a curated query for falls back to a
+capped one-hop neighbor pull — safe, since none of those labels have the
+athlete/injury-scale fan-out the curated queries exist to avoid.
+
+Drag a node to reposition it, scroll to zoom, drag the background to pan.
+Click a node or edge to open its full property map in the side panel.
+Search matches athlete names and injury type/body part. The ask-in-English
+box at the top is `nl_query/ask.py` wired straight in (see "Ask it in
+English" above) — its answer's underlying Cypher and raw rows show in the
+side panel, and any node ids in those rows get fetched and highlighted on
+the graph if they aren't already on screen, so an answer is never just
+text to take on faith.
 
 ## Ingest real (or real-shaped) data
 
@@ -325,10 +371,12 @@ common/
                            #   shared by seed_data.py, ingest_data.py, and the API
 api/
   app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome,
-                            #   plus flag review (GET /flags/unreviewed, POST /flags/{id}/resolve)
-  schemas.py                # Pydantic request/response models (dropdowns, 0-10 RPE bound)
+                            #   flag review (GET /flags/unreviewed, POST /flags/{id}/resolve),
+                            #   graph explorer routes + POST /ask, and the frontend/ static mount
+  schemas.py                # Pydantic request/response models (dropdowns, 0-10 RPE bound, graph node/edge shape)
   reads.py                   # Cypher for the "what's still open" GET endpoints + unreviewed flags
   writes.py                   # Cypher writes, reuses common/db.py
+  graph.py                    # Cypher for the graph explorer — curated overview + label-dispatched expand/search/nodes
 seed/
   seed_data.py            # wipe-and-reload dev/demo data — entry point, applies schema, loads, prints summary
   generators.py           # synthetic athletes/sessions/metrics/wellness/injuries/treatments
@@ -344,8 +392,15 @@ flagging_agent/
                               #   for per-athlete metric/wellness history rather than duplicating it
                               #   (named fetch.py, not queries.py — see its own docstring for why)
   agent.py                     # pure computation: per-athlete flag matching against prior signatures
+frontend/
+  index.html               # header (search, ask-in-english), graph canvas, detail panel, legend
+  style.css                 # design tokens (paper/ink/pitch + per-node-type colors), light+dark mode
+  graph.js                   # force-directed render + interactions: drag, pan/zoom, tap-to-select
+  api.js                       # fetch() wrappers for /graph/* and /ask
+  app.js                         # wires load-overview -> click-to-expand -> search -> ask together
 nl_query/
-  ask.py                   # CLI entry point — wires translate -> guard -> execute -> explain, prints answer + Cypher + rows
+  ask.py                   # ask() is the shared translate -> guard -> execute -> explain pipeline
+                            #   (returns a result dict; the CLI's print_result() is the only thing that prints)
   schema_context.py         # the fixed schema description given to the LLM (the hallucination-risk bound)
   translator.py              # question -> Cypher (Claude, structured output)
   guard.py                    # pure function — read-only keyword check, the first of two write-blocking layers
@@ -370,8 +425,9 @@ ingest/
   earmarked for later: materializing `Cluster` nodes via real community
   detection once there's enough `SIMILAR_PATTERN_TO` density for that to
   mean something. See the comment in `docker-compose.yml` for where to add
-  the plugin when that's built. `Cluster` and `Flag` both stay unpopulated
-  for now (constrained in the schema, no writer yet).
+  the plugin when that's built. `Cluster` stays unpopulated for now
+  (constrained in the schema, no writer yet) — `Flag` is populated, by
+  `flagging_agent/run_flagging_agent.py` (step 6).
 - `Physio` and `Outcome` node types are declared in `schema/constraints.cypher`
   even though CLAUDE.md's "Node types" list doesn't name them — both are
   referenced as edge endpoints in CLAUDE.md's "Key edges" section

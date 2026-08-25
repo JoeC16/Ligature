@@ -102,3 +102,47 @@ class FlagResolve(BaseModel):
 class FlagResolved(BaseModel):
     id: str
     resolution_state: FlagResolution
+
+
+# --- Frontend graph explorer (build order step 7) ---
+# Node/edge shape is uniform across every label (id + label/type + a full
+# property map) rather than one model per node type, since the frontend
+# treats every node generically until the user clicks it open.
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    properties: dict[str, object]
+
+
+class GraphEdge(BaseModel):
+    id: str
+    type: str
+    from_: str = Field(alias="from")
+    to: str
+    properties: dict[str, object]
+
+
+class GraphSubgraph(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+class AskResponse(BaseModel):
+    """Mirrors nl_query/ask.py's ask() result dict. Exactly one of
+    summary/refusal_reason/reason/error is populated, matching `status`."""
+
+    status: Literal["ok", "refused", "unsafe", "error"]
+    question: str
+    summary: str | None = None
+    cypher: str | None = None
+    rows: list[dict] | None = None
+    refusal_reason: str | None = None
+    reason: str | None = None
+    error: str | None = None
+    matched_ids: list[str] = []

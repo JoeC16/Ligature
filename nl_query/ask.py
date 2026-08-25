@@ -1,6 +1,7 @@
-"""Text-to-Cypher NL query layer (build order step 5) — standalone prototype
-per CLAUDE.md ("can be prototyped standalone before full integration"), not
-wired into api/app.py yet.
+"""Text-to-Cypher NL query layer (build order step 5). Prototyped standalone
+per CLAUDE.md ("can be prototyped standalone before full integration"),
+then wired into api/app.py's POST /ask in step 7 — ask() below is the
+shared pipeline both this CLI and that endpoint call.
 
 Usage:
     python nl_query/ask.py "which injuries have no treatment logged yet?"
@@ -34,33 +35,56 @@ from responder import explain  # noqa: E402
 from translator import translate  # noqa: E402
 
 
-def ask(client, session, question: str) -> None:
-    print(f"Q: {question}\n")
-
+def ask(client, session, question: str) -> dict:
+    """Runs the full translate -> guard -> execute -> explain pipeline and
+    returns a structured result instead of printing, so callers other than
+    the CLI (namely api/app.py's POST /ask) can get JSON back directly
+    rather than parsing stdout. `status` is one of "ok", "refused", "unsafe",
+    or "error" — exactly one of the other keys is populated accordingly.
+    """
     translation = translate(client, question)
     if translation.cypher is None:
-        print(f"Can't answer that with the current schema: {translation.refusal_reason}")
-        return
+        return {"status": "refused", "question": question, "refusal_reason": translation.refusal_reason}
 
     try:
         check_read_only(translation.cypher)
     except UnsafeQueryError as e:
-        print(f"Refusing to run this query: {e}")
-        return
+        return {"status": "unsafe", "question": question, "cypher": translation.cypher, "reason": str(e)}
 
     try:
         rows = run_read_only(session, translation.cypher)
     except Exception as e:
-        print(f"Query failed to run:\n{translation.cypher}\n\nError: {e}")
-        return
+        return {"status": "error", "question": question, "cypher": translation.cypher, "error": str(e)}
 
     answer = explain(client, question, translation.cypher, rows)
 
-    print(answer.summary)
+    return {
+        "status": "ok",
+        "question": question,
+        "summary": answer.summary,
+        "cypher": translation.cypher,
+        "rows": rows,
+    }
+
+
+def print_result(result: dict) -> None:
+    print(f"Q: {result['question']}\n")
+
+    if result["status"] == "refused":
+        print(f"Can't answer that with the current schema: {result['refusal_reason']}")
+        return
+    if result["status"] == "unsafe":
+        print(f"Refusing to run this query: {result['reason']}")
+        return
+    if result["status"] == "error":
+        print(f"Query failed to run:\n{result['cypher']}\n\nError: {result['error']}")
+        return
+
+    print(result["summary"])
     print("\n--- underlying query ---")
-    print(translation.cypher)
-    print(f"\n--- {len(rows)} row(s) ---")
-    for row in rows:
+    print(result["cypher"])
+    print(f"\n--- {len(result['rows'])} row(s) ---")
+    for row in result["rows"]:
         print(json.dumps(row, default=str))
 
 
@@ -77,7 +101,7 @@ def main():
     client = anthropic.Anthropic()
     try:
         with driver.session() as session:
-            ask(client, session, question)
+            print_result(ask(client, session, question))
     finally:
         driver.close()
 
