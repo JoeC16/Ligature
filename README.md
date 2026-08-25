@@ -3,7 +3,7 @@
 Graph-native sports biometric intelligence. See [CLAUDE.md](./CLAUDE.md) for
 the full product/architecture writeup and graph schema.
 
-This repo currently implements **build order steps 1–3**:
+This repo currently implements **build order steps 1–4**:
 
 1. A local Neo4j instance with the schema as Cypher constraints, seeded with
    one season of realistic synthetic data for 5 athletes — sessions,
@@ -20,6 +20,10 @@ This repo currently implements **build order steps 1–3**:
    across the squad by shared deviation signature. Run against the step-1
    seed data, it independently rediscovers the engineered hamstring pattern
    without being told where to look.
+4. A small FastAPI app for physios to log `Treatment` → `RehabSession` →
+   `Outcome` — structured quick-entry, dropdowns via Swagger UI, closing
+   the loop CLAUDE.md describes: which treatment protocols actually
+   preceded a clean return versus a re-aggravation for a given pattern.
 
 ## Setup
 
@@ -125,6 +129,48 @@ MATCH (a:Athlete {id: 'athlete-1'})-[:REPORTED]->(w:WellnessEntry)
 RETURN w.date, w.sleep_quality, w.hrv, w.soreness ORDER BY w.date
 ```
 
+## Log a treatment (close the loop)
+
+`api/app.py` is a small FastAPI app for physios to log `Treatment` →
+`RehabSession` → `Outcome` — CLAUDE.md's build-order step 4 ("simple
+internal form or API endpoint, not polished UI yet; enough to test the
+closed-loop query").
+
+```bash
+uvicorn api.app:app --reload
+```
+
+Open **http://localhost:8000/docs** — Swagger UI renders every dropdown
+field (treatment type, outcome result, the 0–10 RPE field) as a real form
+control, so there's no separate UI to build for this step. The three POSTs
+mirror the real workflow: `POST /treatments` targets an open injury (see
+`GET /injuries/open`) and a physio (`GET /physios`); `POST /rehab-sessions`
+follows an open treatment (`GET /treatments/open`); `POST /outcomes`
+closes out an open rehab session (`GET /rehab-sessions/open`). Each POST
+checks its referenced ids exist first (404, not a silently-empty write),
+and Pydantic rejects a bad payload (wrong enum, RPE outside 0–10, a rehab
+date before its treatment) with 422 before the database is ever touched.
+
+The seed data already has treatment chains for 3 of the 6 injuries — try
+closing the loop on one of the other 3 (`injury-athlete1-ankle`,
+`injury-athlete3-ankle`, `injury-athlete5-calf`), which don't have one yet.
+Once you have, this is the closed-loop query CLAUDE.md describes — which
+protocols actually preceded a clean return versus a re-aggravation:
+
+```cypher
+MATCH (t:Treatment)-[:FOLLOWED_BY]->(r:RehabSession)-[:PRODUCED]->(o:Outcome)
+RETURN r.protocol, o.result, count(*) AS n
+ORDER BY r.protocol, o.result
+```
+
+**Scope note**: `notes` on `Treatment` is stored as plain text — CLAUDE.md's
+phase-2 description also mentions free text "tagged via NLP in the
+background" into a `ClinicalNote`, but that's deferred to when the NL
+query layer (step 5) brings LLM plumbing into the repo; building it here
+would be getting ahead of the pattern this project has followed at every
+step (structured traversal first, LLM only where CLAUDE.md actually calls
+for one).
+
 ## Ingest real (or real-shaped) data
 
 `ingest/ingest_data.py` is the CSV pipeline — unlike the seed script, it
@@ -173,7 +219,12 @@ schema/
   constraints.cypher      # uniqueness constraints + indexes, one per node type
 common/
   db.py                   # connect() / run_constraints() / write_nodes() / write_edges(),
-                           #   shared by seed_data.py and ingest_data.py
+                           #   shared by seed_data.py, ingest_data.py, and the API
+api/
+  app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome
+  schemas.py                # Pydantic request/response models (dropdowns, 0-10 RPE bound)
+  reads.py                   # Cypher for the "what's still open" GET endpoints
+  writes.py                   # Cypher writes, reuses common/db.py
 seed/
   seed_data.py            # wipe-and-reload dev/demo data — entry point, applies schema, loads, prints summary
   generators.py           # synthetic athletes/sessions/metrics/wellness/injuries/treatments
