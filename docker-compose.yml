@@ -1,0 +1,22 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: ligature-neo4j
+    ports:
+      - "7474:7474" # HTTP browser UI
+      - "7687:7687" # Bolt
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-ligature-dev-pw}
+      # Graph Data Science plugin isn't needed until the pattern engine
+      # (build order step 3) — add NEO4J_PLUGINS=["graph-data-science"]
+      # here when that step starts.
+    volumes:
+      - ligature_neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ligature_neo4j_data:

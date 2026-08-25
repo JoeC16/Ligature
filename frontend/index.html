@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ligature — Graph Explorer</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><circle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%2314261f%22/><circle cx=%228%22 cy=%228%22 r=%223%22 fill=%22%233a5a8c%22/></svg>" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>
+        Ligature
+        <span class="tagline">graph-native sports biometric intelligence</span>
+      </h1>
+
+      <div class="search-box">
+        <input type="search" id="search-input" placeholder="Search athletes, injuries…" autocomplete="off" />
+        <div class="search-results" id="search-results"></div>
+      </div>
+
+      <div class="ask-box">
+        <form id="ask-form">
+          <input type="text" id="ask-input" placeholder="Ask a question in plain English…" autocomplete="off" />
+          <button type="submit" class="ask-submit" id="ask-submit">Ask</button>
+        </form>
+      </div>
+    </header>
+
+    <main>
+      <div class="graph-pane">
+        <svg id="graph-svg"></svg>
+        <div class="graph-hint">drag to pan · scroll to zoom · click a node to expand it</div>
+      </div>
+      <aside class="detail-panel" id="detail-panel">
+        <p class="empty">Click a node or edge to inspect it.</p>
+      </aside>
+    </main>
+
+    <footer class="legend">
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--athlete)"></span>Athlete</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--injury)"></span>Injury</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Flag</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--physio)"></span>Treatment / RehabSession / Physio</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--clean)"></span>Outcome</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--wellness)"></span>WellnessEntry</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--injury-fill)"></span>SessionMetric</span>
+    </footer>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
