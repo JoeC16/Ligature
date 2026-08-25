@@ -12,8 +12,13 @@ FROM neo4j:5-community
 
 # python3-pip alongside python3-venv: Debian's python3-venv doesn't
 # reliably bootstrap pip into a new venv (ensurepip) without it present.
+# build-essential (gcc etc.): the base image's Python version doesn't
+# necessarily have a prebuilt wheel available for every pin in
+# requirements.txt (numpy in particular), so pip falls back to compiling
+# from source — which needs a C compiler present, or it fails outright
+# with a meson "unknown compiler" error rather than silently using a wheel.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-venv python3-pip \
+    && apt-get install -y --no-install-recommends python3 python3-venv python3-pip build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
