@@ -3,11 +3,17 @@
 Graph-native sports biometric intelligence. See [CLAUDE.md](./CLAUDE.md) for
 the full product/architecture writeup and graph schema.
 
-This repo currently implements **build order step 1**: a local Neo4j
-instance with the schema as Cypher constraints, seeded with one season of
-realistic synthetic data for 5 athletes — sessions, wellness entries,
-injuries, treatment/rehab/outcome chains, and a worked example of the
-hamstring injury pattern CLAUDE.md's pattern engine section describes.
+This repo currently implements **build order steps 1–2**:
+
+1. A local Neo4j instance with the schema as Cypher constraints, seeded with
+   one season of realistic synthetic data for 5 athletes — sessions,
+   wellness entries, injuries, treatment/rehab/outcome chains, and a worked
+   example of the hamstring injury pattern CLAUDE.md's pattern engine
+   section describes.
+2. A CSV ingestion pipeline for real (or real-shaped) GPS, wellness, and
+   injury exports — the messiest, most time-consuming part per CLAUDE.md,
+   so it's built to cope with inconsistent column names, date formats, and
+   missing values across three unrelated source systems.
 
 ## Setup
 
@@ -88,6 +94,44 @@ MATCH (a:Athlete {id: 'athlete-1'})-[:REPORTED]->(w:WellnessEntry)
 RETURN w.date, w.sleep_quality, w.hrv, w.soreness ORDER BY w.date
 ```
 
+## Ingest real (or real-shaped) data
+
+`ingest/ingest_data.py` is the CSV pipeline — unlike the seed script, it
+never wipes anything. It's additive/upsert, meant to run repeatedly (once
+per scheduled export) against a graph that's already live, the way a real
+club's GPS/wellness/medical exports would land over a season.
+
+```bash
+python ingest/ingest_data.py \
+  --roster ingest/sample_data/athlete_roster.csv \
+  --gps ingest/sample_data/gps_export.csv \
+  --wellness ingest/sample_data/wellness_export.csv \
+  --injuries ingest/sample_data/injury_log.csv
+```
+
+`--gps` / `--wellness` / `--injuries` are each independent and optional —
+pass whichever export actually landed. `--roster` is the athlete-identity
+anchor and is required whenever any of the others are passed, since none of
+the three source systems share an athlete ID with each other.
+
+The bundled `ingest/sample_data/` CSVs are deliberately messy on purpose —
+three different header conventions, three different date formats
+(`YYYY-MM-DD`, `DD/MM/YYYY`, `12 Jan 2025`), a comma-thousands number, a
+sensor dropout (blank value), a resynced duplicate row, an unrecognized
+severity value, and one row for an athlete not in the roster (a trialist) —
+so running the command above is itself a demonstration of the pipeline
+handling exactly the problem CLAUDE.md calls out. The run prints what it
+skipped and why; nothing fails silently. Athlete identity is resolved by
+normalized name against the roster, so re-running on an updated or corrected
+export MERGEs onto the same nodes rather than duplicating them — same for
+every node type here (`Session` is keyed on date+type, `SessionMetric` and
+`WellnessEntry` on athlete+date, `Injury` on athlete+body part+onset date).
+
+The sample data uses three new athletes (Jordan Price, Priya Kaur, Marcus
+Bellamy) rather than the step-1 seed athletes, so it's safe to run this
+right after `seed/seed_data.py` with no id collisions — the two are
+independent demonstrations sitting in the same graph.
+
 ## Layout
 
 ```
@@ -96,10 +140,22 @@ docker-compose.yml       # local Neo4j (community edition)
 requirements.txt
 schema/
   constraints.cypher      # uniqueness constraints + indexes, one per node type
+common/
+  db.py                   # connect() / run_constraints() / write_nodes() / write_edges(),
+                           #   shared by seed_data.py and ingest_data.py
 seed/
-  seed_data.py            # entry point — connects, applies schema, wipes, loads, prints summary
+  seed_data.py            # wipe-and-reload dev/demo data — entry point, applies schema, loads, prints summary
   generators.py           # synthetic athletes/sessions/metrics/wellness/injuries/treatments
   hamstring_pattern.py     # the one hand-authored PRECEDED / SIMILAR_PATTERN_TO example
+ingest/
+  ingest_data.py           # additive/upsert CLI entry point for real CSV exports
+  normalize.py             # date/number/name cleanup, stable_id() hashing shared by every source
+  roster.py                # athlete identity resolution (normalized name -> athlete id)
+  sources/
+    gps.py                 # GPS export -> Session + SessionMetric
+    wellness.py             # wellness survey export -> WellnessEntry
+    injuries.py             # injury log export -> Injury
+  sample_data/              # deliberately messy sample CSVs, see "Ingest" above
 ```
 
 ## Notes
