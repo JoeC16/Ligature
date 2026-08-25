@@ -3,7 +3,7 @@
 Graph-native sports biometric intelligence. See [CLAUDE.md](./CLAUDE.md) for
 the full product/architecture writeup and graph schema.
 
-This repo currently implements **build order steps 1–4**:
+This repo currently implements **build order steps 1–5**:
 
 1. A local Neo4j instance with the schema as Cypher constraints, seeded with
    one season of realistic synthetic data for 5 athletes — sessions,
@@ -24,6 +24,12 @@ This repo currently implements **build order steps 1–4**:
    `Outcome` — structured quick-entry, dropdowns via Swagger UI, closing
    the loop CLAUDE.md describes: which treatment protocols actually
    preceded a clean return versus a re-aggravation for a given pattern.
+5. A text-to-Cypher NL query layer — a standalone CLI prototype (per
+   CLAUDE.md's own phasing, not wired into the API yet) that translates a
+   plain-English question into a read-only Cypher query against the fixed
+   schema, runs it, and explains the exact results back in plain language.
+   The first LLM integration in the repo — see its own section below for
+   the safety properties that come with that.
 
 ## Setup
 
@@ -129,6 +135,40 @@ MATCH (a:Athlete {id: 'athlete-1'})-[:REPORTED]->(w:WellnessEntry)
 RETURN w.date, w.sleep_quality, w.hrv, w.soreness ORDER BY w.date
 ```
 
+## Ask it in English
+
+`nl_query/ask.py` is CLAUDE.md's step 5 — text-to-Cypher against the fixed
+schema above. It's a standalone CLI prototype, per CLAUDE.md's own phasing
+("can be prototyped standalone before full integration") — not wired into
+`api/app.py` yet. This is the first place an LLM enters the system, so it
+needs your own key:
+
+```bash
+# add to .env: ANTHROPIC_API_KEY=sk-ant-...
+python nl_query/ask.py "which injuries have no treatment logged yet?"
+python nl_query/ask.py "which treatment protocols preceded a clean return vs. a re-aggravation?"
+python nl_query/ask.py "what happened to Allison Hill's sleep quality before her hamstring strain?"
+```
+
+Each question goes through: **translate** (Claude turns the question into
+Cypher, constrained to the exact schema in `nl_query/schema_context.py` —
+CLAUDE.md: "constrain generation to this schema to bound hallucination
+risk"; if the question can't be answered with this schema, it says so
+instead of guessing) → **guard** (a read-only keyword check) → **execute**
+(inside a Neo4j read transaction — the server itself, not just the guard,
+rejects a write) → **explain** (a second Claude call, shown only the exact
+rows the query returned, instructed to state only what they show). The
+output is the plain-language answer, then the Cypher that was actually run
+and its raw result rows underneath — CLAUDE.md: "every answer must link
+back to the underlying nodes so a physio can verify it directly."
+
+**Two things this tool never does**, both enforced in code, not just
+prompted: it never writes to the graph (a write-keyword check before
+anything is sent to the database, then the query still runs inside a
+read-only Neo4j transaction that would itself reject a write), and it
+never answers from the model's own knowledge — the explanation step is
+only ever shown the literal rows the query returned.
+
 ## Log a treatment (close the loop)
 
 `api/app.py` is a small FastAPI app for physios to log `Treatment` →
@@ -213,7 +253,7 @@ independent demonstrations sitting in the same graph.
 
 ```
 docker-compose.yml       # local Neo4j (community edition)
-.env.example             # NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD
+.env.example             # NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD / ANTHROPIC_API_KEY
 requirements.txt
 schema/
   constraints.cypher      # uniqueness constraints + indexes, one per node type
@@ -232,6 +272,13 @@ pattern_engine/
   run_pattern_engine.py    # entry point — pulls, scores, deletes old pattern edges, rewrites, prints summary
   queries.py                # Cypher pull layer only — no logic
   engine.py                 # pure computation: baselines, z-scores, PRECEDED + SIMILAR_PATTERN_TO scoring
+nl_query/
+  ask.py                   # CLI entry point — wires translate -> guard -> execute -> explain, prints answer + Cypher + rows
+  schema_context.py         # the fixed schema description given to the LLM (the hallucination-risk bound)
+  translator.py              # question -> Cypher (Claude, structured output)
+  guard.py                    # pure function — read-only keyword check, the first of two write-blocking layers
+  executor.py                  # runs Cypher inside a Neo4j read transaction — the second layer
+  responder.py                  # (question, cypher, rows) -> plain-language answer, shown only the real rows
 ingest/
   ingest_data.py           # additive/upsert CLI entry point for real CSV exports
   normalize.py             # date/number/name cleanup, stable_id() hashing shared by every source
