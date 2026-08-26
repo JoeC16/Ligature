@@ -15,13 +15,14 @@ the full product/architecture writeup and graph schema.
 
 > **Live demo**: this repo can deploy itself to a free public URL — see
 > [deploy/render/README.md](./deploy/render/README.md) (currently the free
-> path; no credit card, deploys straight from this GitHub repo) or
-> [deploy/huggingface/README.md](./deploy/huggingface/README.md) (Hugging
-> Face Spaces — free until a July 2026 policy change, now needs a paid PRO
-> plan for a Docker Space; the frontmatter above is Spaces' own config
-> format in case you go that route, harmless everywhere else). Same
-> `Dockerfile` either way. Everything below this point is the normal
-> project docs.
+> path; no credit card, deploys straight from this GitHub repo — Render's
+> free instance turned out too small to run Neo4j itself, so this is
+> Neo4j AuraDB Free + Render running just the app, not the Dockerfile
+> below) or [deploy/huggingface/README.md](./deploy/huggingface/README.md)
+> (Hugging Face Spaces — free until a July 2026 policy change, now needs a
+> paid PRO plan for a Docker Space; the frontmatter above is Spaces' own
+> config format in case you go that route, harmless everywhere else).
+> Everything below this point is the normal project docs.
 
 This repo currently implements **all 7 build order steps**:
 
