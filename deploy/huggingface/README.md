@@ -52,13 +52,19 @@ That's it — the Space builds, and in a few minutes you have a public URL at
 ## What happens on every container start
 
 `deploy/huggingface/entrypoint.sh` starts Memgraph, waits for it to accept
-connections, then re-seeds the demo graph from scratch
+connections, then starts the app and re-seeds the demo graph from scratch
 (`seed/seed_data.py` → `pattern_engine/run_pattern_engine.py` →
 `flagging_agent/run_flagging_agent.py`, no `--as-of` override needed — the
 seed data plants its flagging-echo cohort at the end of the generated
 season, so the agent's default per-athlete reference date already
-produces real `Flag`s to click on) before starting the app. This is
-deliberate, not a workaround: a free
+produces real `Flag`s to click on) **concurrently**, not seed-then-serve —
+the 30-player dataset is real CPU work (~25k node/edge writes plus a
+per-athlete flagging pass), and a free instance's fraction of a CPU core
+made blocking on it long enough that the host's own health check gave up
+and failed the deploy before the app ever got a chance to start. A
+visitor hitting the Space in the first minute or so after a cold start
+may see an empty or still-filling-in graph — refresh once seeding
+catches up. This is deliberate, not a workaround: a free
 Space's disk is ephemeral, and this repo's seed data is fully synthetic
 and deterministic (`generators.SEED`), so re-seeding on boot just means
 every visitor sees the same known-good demo graph regardless of when the
