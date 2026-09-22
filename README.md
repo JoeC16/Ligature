@@ -15,13 +15,14 @@ the full product/architecture writeup and graph schema.
 
 > **Live demo**: this repo can deploy itself to a free public URL — see
 > [deploy/render/README.md](./deploy/render/README.md) (currently the free
-> path; no credit card, deploys straight from this GitHub repo — Render's
-> free instance turned out too small to run Neo4j itself, so this is
-> Neo4j AuraDB Free + Render running just the app, not the Dockerfile
-> below) or [deploy/huggingface/README.md](./deploy/huggingface/README.md)
-> (Hugging Face Spaces — free until a July 2026 policy change, now needs a
-> paid PRO plan for a Docker Space; the frontmatter above is Spaces' own
-> config format in case you go that route, harmless everywhere else).
+> path; no credit card, deploys straight from this GitHub repo, the root
+> `Dockerfile` bundling Memgraph + the app in one container) or
+> [deploy/huggingface/README.md](./deploy/huggingface/README.md) (Hugging
+> Face Spaces — free until a July 2026 policy change, now needs a paid PRO
+> plan for a Docker Space; the frontmatter above is Spaces' own config
+> format in case you go that route, harmless everywhere else). Local dev
+> still runs on Neo4j (below) — Memgraph is only used for this bundled
+> free-tier deploy.
 > Everything below this point is the normal project docs.
 
 This repo currently implements **all 7 build order steps**:
@@ -383,13 +384,20 @@ independent demonstrations sitting in the same graph.
 
 ```
 docker-compose.yml       # local Neo4j (community edition)
+Dockerfile                # bundled Memgraph + app image, free-tier deploy only — see deploy/
 .env.example             # NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD / ANTHROPIC_API_KEY
 requirements.txt
 schema/
-  constraints.cypher      # uniqueness constraints + indexes, one per node type
+  constraints.cypher      # uniqueness constraints + indexes, one per node type (Neo4j, local dev)
+  constraints.memgraph.cypher  # same, Memgraph DDL syntax — used only when GRAPH_ENGINE=memgraph
+deploy/
+  render/README.md        # free-tier deploy: Render + the bundled Dockerfile (Memgraph)
+  huggingface/README.md    # same Dockerfile on HF Spaces — needs a paid plan there now
+  huggingface/entrypoint.sh # shared entrypoint for both: start DB -> seed -> pattern engine -> app
 common/
   db.py                   # connect() / run_constraints() / write_nodes() / write_edges(),
-                           #   shared by seed_data.py, ingest_data.py, and the API
+                           #   shared by seed_data.py, ingest_data.py, and the API —
+                           #   run_constraints() picks the Neo4j or Memgraph DDL file via GRAPH_ENGINE
 api/
   app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome,
                             #   flag review (GET /flags/unreviewed, POST /flags/{id}/resolve),

@@ -1,4 +1,7 @@
-"""Shared Neo4j connection + MERGE-based write helpers.
+"""Shared Neo4j connection + MERGE-based write helpers. Also used, via the
+GRAPH_ENGINE env var, against Memgraph in the bundled free-tier deploy
+(see deploy/render/README.md) -- both speak Bolt/Cypher through the same
+neo4j driver package, so only run_constraints()'s DDL needs to branch.
 
 Used by both `seed/seed_data.py` (wipe-and-reload dev/demo data) and
 `ingest/ingest_data.py` (additive, rerunnable real-data ingestion). Both
@@ -16,6 +19,7 @@ from neo4j import GraphDatabase
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONSTRAINTS_FILE = REPO_ROOT / "schema" / "constraints.cypher"
+CONSTRAINTS_FILE_MEMGRAPH = REPO_ROOT / "schema" / "constraints.memgraph.cypher"
 
 
 def connect():
@@ -31,7 +35,11 @@ def connect():
 
 
 def run_constraints(session):
-    text = CONSTRAINTS_FILE.read_text()
+    # Only the bundled free-tier deploy sets GRAPH_ENGINE=memgraph (see the
+    # root Dockerfile) -- unset everywhere else, including local dev and
+    # ingest_data.py, so this is a no-op change for every other caller.
+    constraints_file = CONSTRAINTS_FILE_MEMGRAPH if os.environ.get("GRAPH_ENGINE") == "memgraph" else CONSTRAINTS_FILE
+    text = constraints_file.read_text()
     statements = [s.strip() for s in text.split(";")]
     for statement in statements:
         # Strip full-line comments before checking if anything executable remains.

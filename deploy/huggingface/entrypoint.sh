@@ -1,69 +1,48 @@
 #!/bin/bash
-# Container entrypoint for the Hugging Face Space build (see ../../Dockerfile).
-# Starts Neo4j as a background daemon, waits for it to accept connections,
-# (re)seeds the demo data — safe and idempotent, since seed_data.py always
+# Container entrypoint for the bundled free-tier deploy (see ../../Dockerfile
+# -- shared by both deploy/render/README.md and deploy/huggingface/README.md).
+# Starts Memgraph in the background, waits for it to accept connections,
+# (re)seeds the demo data -- safe and idempotent, since seed_data.py always
 # wipes+reloads deterministically and the pattern engine's own edges are a
-# scoped delete+recompute — then serves the app in the foreground.
+# scoped delete+recompute -- then serves the app in the foreground.
 #
 # Re-seeding on every container start isn't a workaround, it's the right
-# behavior here: a free Space's storage is ephemeral (a restart can wipe
+# behavior here: a free host's storage is ephemeral (a restart can wipe
 # /data), and this repo's seed data is fully synthetic and reproducible,
 # so "re-seed on boot" just means every visitor sees the same known-good
 # demo graph regardless of when the container last restarted.
 
 set -euo pipefail
 
-# Overriding the base neo4j image's own ENTRYPOINT (this script) means its
-# built-in NEO4J_AUTH handling never runs — that's normally what calls
-# `neo4j-admin dbms set-initial-password` on first boot. Do it ourselves,
-# before starting the server. This only succeeds on a fresh, uninitialized
-# /data (true on every boot here, since this Dockerfile mounts no
-# persistent volume — see the main entrypoint comment above); if it's ever
-# run against an already-initialized database the command fails harmlessly
-# and the existing password stands, so this is safe either way.
-echo "Setting initial Neo4j password..."
-neo4j-admin dbms set-initial-password "${NEO4J_PASSWORD}" \
-  || echo "Initial password already set (non-fresh /data) — continuing with the existing one."
+# --memory-limit is in MB. Render's free instance is 512MB total, shared
+# with the Python process started below -- Memgraph itself is far lighter
+# than Neo4j's JVM (no class metadata, thread-per-connection stacks, or
+# off-heap Netty buffers to budget for), so this is a generous cap for a
+# few hundred demo nodes/edges, not a tight squeeze the way Neo4j's heap
+# tuning was on the previous version of this file.
+echo "Starting Memgraph..."
+memgraph --memory-limit=250 &
 
-# Neo4j's default memory sizing assumes it owns the whole machine, which
-# is wrong on a free-tier host (Render's free instance is 512MB RAM total,
-# shared with the Python process below). Pin it to a small, explicit
-# footprint instead of letting it autosize past what's actually available
-# and get OOM-killed. This dataset is a few hundred demo nodes/edges, not
-# a real production graph, so a small heap/page cache is genuinely enough
-# -- this isn't a compromise specific to being memory-constrained.
-NEO4J_CONF="${NEO4J_HOME:-/var/lib/neo4j}/conf/neo4j.conf"
-sed -i \
-  -e '/^server\.memory\.heap\.initial_size=/d' \
-  -e '/^server\.memory\.heap\.max_size=/d' \
-  -e '/^server\.memory\.pagecache\.size=/d' \
-  "${NEO4J_CONF}"
-{
-  echo "server.memory.heap.initial_size=150m"
-  echo "server.memory.heap.max_size=150m"
-  echo "server.memory.pagecache.size=32m"
-} >> "${NEO4J_CONF}"
+echo "Waiting for Memgraph to accept connections..."
+python3 -c "
+import sys
+import time
 
-echo "Starting Neo4j..."
-neo4j start
+from neo4j import GraphDatabase
 
-echo "Waiting for Neo4j to accept connections..."
-# A generous budget, not a guess: Render's free tier gives this container
-# 0.1 vCPU, and a cold JVM boot (class loading, JIT warmup) plus first-run
-# database initialization can genuinely take a couple of minutes under
-# that much throttling -- a short timeout here would misreport a slow
-# boot as a real failure.
-for i in $(seq 1 90); do
-  if cypher-shell -u "${NEO4J_USER}" -p "${NEO4J_PASSWORD}" "RETURN 1" >/dev/null 2>&1; then
-    echo "Neo4j is up."
-    break
-  fi
-  if [ "$i" -eq 90 ]; then
-    echo "Neo4j never came up after 270s — aborting." >&2
-    exit 1
-  fi
-  sleep 3
-done
+for i in range(60):
+    try:
+        driver = GraphDatabase.driver('bolt://localhost:7687', auth=('${NEO4J_USER}', '${NEO4J_PASSWORD}'))
+        driver.verify_connectivity()
+        driver.close()
+        print('Memgraph is up.')
+        break
+    except Exception as exc:
+        if i == 59:
+            print(f'Memgraph never came up after 120s: {exc}', file=sys.stderr)
+            sys.exit(1)
+        time.sleep(2)
+"
 
 echo "Seeding demo data..."
 python seed/seed_data.py
