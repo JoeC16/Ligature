@@ -3,11 +3,17 @@ import { createGraph } from "./graph.js";
 
 const svg = document.getElementById("graph-svg");
 const detailPanel = document.getElementById("detail-panel");
+const detailBody = document.getElementById("detail-body");
+const detailBackdrop = document.getElementById("detail-backdrop");
+const detailClose = document.getElementById("detail-close");
 const searchInput = document.getElementById("search-input");
 const searchResults = document.getElementById("search-results");
 const askForm = document.getElementById("ask-form");
 const askInput = document.getElementById("ask-input");
 const askSubmit = document.getElementById("ask-submit");
+const themeToggle = document.getElementById("theme-toggle");
+const graphLoading = document.getElementById("graph-loading");
+const graphLoadingText = document.getElementById("graph-loading-text");
 
 const graph = createGraph(svg, {
   onNodeClick: handleNodeClick,
@@ -17,8 +23,28 @@ const graph = createGraph(svg, {
 
 let lastAskAnswer = null;
 
+// --- Detail panel (sidebar on desktop, a bottom sheet on mobile — see the
+// max-width: 760px block in style.css; .open only has an effect there) ---
+
+function openDetailPanel() {
+  detailPanel.classList.add("open");
+  detailBackdrop.classList.add("open");
+}
+
+function closeDetailPanel() {
+  detailPanel.classList.remove("open");
+  detailBackdrop.classList.remove("open");
+}
+
+detailClose.addEventListener("click", closeDetailPanel);
+detailBackdrop.addEventListener("click", closeDetailPanel);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") closeDetailPanel();
+});
+
 async function handleNodeClick(node) {
   renderNodeDetail(node);
+  openDetailPanel();
   if (!node._expanded) {
     node._expanded = true;
     try {
@@ -32,14 +58,16 @@ async function handleNodeClick(node) {
 
 function handleEdgeClick(edge) {
   renderEdgeDetail(edge);
+  openDetailPanel();
 }
 
 function clearDetailPanel() {
   if (lastAskAnswer) {
     renderAskAnswer(lastAskAnswer);
   } else {
-    detailPanel.innerHTML = '<p class="empty">Click a node or edge to inspect it.</p>';
+    detailBody.innerHTML = '<p class="empty">Click a node or edge to inspect it.</p>';
   }
+  closeDetailPanel();
 }
 
 function propTable(properties) {
@@ -57,7 +85,7 @@ function escapeHtml(s) {
 }
 
 function renderNodeDetail(node) {
-  detailPanel.innerHTML = `
+  detailBody.innerHTML = `
     <span class="detail-label" style="background:var(--mist);color:var(--ink-secondary)">${escapeHtml(node.label)}</span>
     <h2>${escapeHtml(node.properties?.name || node.properties?.type || node.id)}</h2>
     <div class="id">${escapeHtml(node.id)}</div>
@@ -66,7 +94,7 @@ function renderNodeDetail(node) {
 }
 
 function renderEdgeDetail(edge) {
-  detailPanel.innerHTML = `
+  detailBody.innerHTML = `
     <span class="detail-label" style="background:var(--mist);color:var(--ink-secondary)">${escapeHtml(edge.type)}</span>
     <h2>${escapeHtml(edge.from)} &rarr; ${escapeHtml(edge.to)}</h2>
     <div class="id">${escapeHtml(edge.id)}</div>
@@ -92,6 +120,13 @@ searchInput.addEventListener("input", () => {
       console.error("search failed", err);
     }
   }, 200);
+});
+
+searchInput.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    searchResults.innerHTML = "";
+    searchInput.blur();
+  }
 });
 
 function renderSearchResults(results) {
@@ -135,10 +170,13 @@ askForm.addEventListener("submit", async (ev) => {
   if (!question) return;
 
   askSubmit.disabled = true;
+  const originalLabel = askSubmit.textContent;
+  askSubmit.textContent = "Asking…";
   try {
     const answer = await askQuestion(question);
     lastAskAnswer = answer;
     renderAskAnswer(answer);
+    openDetailPanel();
     if (answer.matched_ids && answer.matched_ids.length > 0) {
       const missing = answer.matched_ids.filter((id) => !graph.hasNode(id));
       if (missing.length > 0) {
@@ -151,8 +189,10 @@ askForm.addEventListener("submit", async (ev) => {
     console.error("ask failed", err);
     lastAskAnswer = { status: "error", question, error: String(err) };
     renderAskAnswer(lastAskAnswer);
+    openDetailPanel();
   } finally {
     askSubmit.disabled = false;
+    askSubmit.textContent = originalLabel;
   }
 });
 
@@ -169,7 +209,7 @@ function renderAskAnswer(answer) {
     body = `<div class="errored">Something went wrong: ${escapeHtml(answer.error || "")}</div>`;
   }
 
-  detailPanel.innerHTML = `
+  detailBody.innerHTML = `
     <p class="empty">Click a node or edge to inspect it.</p>
     <div class="ask-answer">
       <div class="question">“${escapeHtml(answer.question)}”</div>
@@ -178,8 +218,46 @@ function renderAskAnswer(answer) {
   `;
 }
 
+// --- Theme toggle ---
+
+const THEME_KEY = "ligature-theme";
+
+function initTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    // Private browsing / blocked storage — fall back to the system preference below.
+  }
+  if (stored === "light" || stored === "dark") {
+    document.documentElement.setAttribute("data-theme", stored);
+  }
+}
+
+themeToggle.addEventListener("click", () => {
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const current = document.documentElement.getAttribute("data-theme") || (systemDark ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // Nothing to persist to if storage is unavailable — the toggle still
+    // works for the rest of this page load.
+  }
+});
+
+initTheme();
+
 // --- Initial load ---
 
 getOverview()
-  .then((subgraph) => graph.merge(subgraph))
-  .catch((err) => console.error("overview load failed", err));
+  .then((subgraph) => {
+    graph.merge(subgraph);
+    graphLoading.classList.add("hidden");
+  })
+  .catch((err) => {
+    console.error("overview load failed", err);
+    graphLoading.classList.add("errored");
+    graphLoadingText.textContent = "Couldn't load the graph. Is the API reachable?";
+  });
