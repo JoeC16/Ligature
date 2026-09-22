@@ -9,9 +9,11 @@ Usage:
 
 Default reference date is per-athlete: their own most recent Session/
 WellnessEntry date + 1 day — a real nightly job runs relative to whatever
-data has landed, not a fixed calendar date. --as-of overrides that
-globally, for testing/demos (see README for why the seed data only
-produces a real flag with an --as-of override, not by default).
+data has landed, not a fixed calendar date. The seed data (seed/generators.py)
+plants its flagging-echo cohort right at the end of the generated season
+specifically so this default already produces real flags — --as-of exists
+for evaluating the squad as of an arbitrary earlier point, not because the
+default is empty.
 
 Requires pattern_engine/run_pattern_engine.py to have run at least once —
 otherwise no injury has a persisted deviation signature yet to compare

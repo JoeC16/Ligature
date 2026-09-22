@@ -28,10 +28,12 @@ the full product/architecture writeup and graph schema.
 This repo currently implements **all 7 build order steps**:
 
 1. A local Memgraph instance with the schema as Cypher constraints, seeded with
-   one season of realistic synthetic data for 5 athletes — sessions,
-   wellness entries, injuries, and treatment/rehab/outcome chains. Two of
-   the six injuries (both hamstring strains) have a deliberately engineered
-   load spike + wellness dip in the lead-up, as ground truth for step 3.
+   one season of realistic synthetic data for a 30-player squad — sessions,
+   wellness entries, injuries, and treatment/rehab/outcome chains across a
+   deliberate mix of injury-free, injured-and-returned, and still-injured/
+   ongoing-rehab scenarios. Five of the injuries (all hamstring strains, a
+   real cross-athlete cluster) have a deliberately engineered load spike +
+   wellness dip in the lead-up, as ground truth for step 3.
 2. A CSV ingestion pipeline for real (or real-shaped) GPS, wellness, and
    injury exports — the messiest, most time-consuming part per CLAUDE.md,
    so it's built to cope with inconsistent column names, date formats, and
@@ -56,12 +58,14 @@ This repo currently implements **all 7 build order steps**:
    window against every prior injury's now-persisted deviation signature
    (both their own past injuries and the rest of the squad's, which turns
    out to be one comparison, not two), and writes a `Flag` when one clears
-   a per-athlete confidence threshold. Run with the right `--as-of` date
-   against the seed data, it flags Noah Rhodes against Allison Hill's
-   already-scored hamstring injury five weeks before Noah's actual
-   onset — the predictive half of the product, not just the retrospective
-   half step 3 built. Resolution write-back (CLAUDE.md's other
-   build-in-from-the-start requirement) reuses the step-4 API.
+   a per-athlete confidence threshold. Run with no arguments at all against
+   the seed data (the default per-athlete reference date is all it needs —
+   the seed data plants a real echo of the hamstring cluster's signature at
+   the end of five injury-free athletes' own data), it flags all five
+   against the already-scored hamstring cluster — the predictive half of
+   the product, not just the retrospective half step 3 built. Resolution
+   write-back (CLAUDE.md's other build-in-from-the-start requirement)
+   reuses the step-4 API.
 7. A frontend graph explorer — vanilla HTML/CSS/JS, no build step, served
    directly by `api/app.py` so `uvicorn api.app:app` is the one command
    that runs the whole product. A curated starting view (every `Athlete`,
@@ -102,21 +106,39 @@ build (what `docker-compose.yml` runs) doesn't enforce authentication.
 
 ## What gets seeded
 
-- 5 athletes, one ~40-week season (Aug–May), 3 GPS-tracked sessions/week
-  (2x training + 1x match) plus a weekly gym session, and daily wellness
-  entries — all generated around a **per-athlete baseline** with noise,
-  per CLAUDE.md's "individual variance matters, not population baseline"
-  principle.
-- 6 injuries across the squad, 3 with full treatment → rehab → outcome
-  chains (one re-aggravation, two clean returns — deliberately different
-  outcomes for the same injury type, since that contrast is the point of
-  closing the treatment-outcome loop later).
-- **The hamstring pattern**: athlete-1 and athlete-2 each sustain a
-  hamstring strain preceded by 8 days of load spiking against their own
-  baseline (HSR distance, accel/decel load) and wellness dipping (sleep
-  quality, HRV, soreness) — baked into the raw `SessionMetric`/
-  `WellnessEntry` values by `seed/generators.py`. No edges point at it yet;
-  that's what the pattern engine is for.
+- A 30-player squad (realistic position mix — 2 keepers, 5 centre-backs,
+  5 fullbacks, 8 midfielders, 5 wingers, 5 strikers), one ~40-week season
+  (Aug–May), 3 GPS-tracked sessions/week (2x training + 1x match) plus a
+  weekly gym session, and daily wellness entries for every player — all
+  generated around a **per-athlete baseline** with noise, per CLAUDE.md's
+  "individual variance matters, not population baseline" principle.
+- A deliberate mix of three scenarios across the squad: **12 athletes
+  injury-free** all season, **12 injured and returned** (a full
+  treatment → multi-session rehab → outcome chain each — 9 clean returns,
+  3 re-aggravations), and **6 still injured with an ongoing rehab
+  program** (a treatment and rehab series with no `Outcome` yet — that's
+  what "still in rehab" means in this graph). Those six are themselves
+  staggered across the pipeline — one injury with no treatment logged yet,
+  one treated but rehab not started, three at increasing points into an
+  active program — so `GET /injuries/open`, `/treatments/open`, and
+  `/rehab-sessions/open` all have something real behind them (see "Log a
+  treatment" below).
+- **The hamstring cluster**: 5 athletes (athlete-1 through athlete-5) each
+  sustain a hamstring strain preceded by 8 days of load spiking against
+  their own baseline (HSR distance, accel/decel load) and wellness dipping
+  (sleep quality, HRV, soreness) — baked into the raw `SessionMetric`/
+  `WellnessEntry` values by `seed/generators.py`. A real cross-athlete
+  cluster, not an isolated pair, spanning every outcome this graph can
+  represent: athlete-1 (Allison Hill) is rushed back and re-aggravates,
+  athlete-2 through athlete-4 return clean, and athlete-5 is still mid-
+  rehab. No edges point at any of this yet; that's what the pattern
+  engine is for.
+- **The flagging echo**: 5 of the 12 injury-free athletes carry the same
+  load-spike + wellness-dip signature as the hamstring cluster in the
+  final ~12 days of the season, with no injury following — "currently
+  fine, but showing the same pattern that led to a hamstring strain
+  elsewhere in the squad." This is what the flagging agent's default run
+  (see "Flag athletes at risk" below) is meant to catch.
 
 ## Compute the pattern engine
 
@@ -143,11 +165,12 @@ magnitude; each injury's full deviating-field set becomes its "signature,"
 and every pair of injuries gets a `SIMILAR_PATTERN_TO` edge (Jaccard
 overlap of their signatures) once they clear a similarity threshold.
 
-Run against the seed data, it rediscovers the engineered hamstring pattern
-exactly — all 6 spiking `SessionMetric` nodes get `PRECEDED` edges to the
-right injury, the two hamstring injuries get linked by `SIMILAR_PATTERN_TO`,
-and the other 4 injuries (which have no engineered lead-in) get nothing —
-without being told in advance which injuries or which sessions to look at.
+Run against the seed data, it rediscovers the engineered hamstring cluster
+exactly — every spiking `SessionMetric` node gets a `PRECEDED` edge to the
+right injury, all 5 hamstring injuries get pairwise-linked by
+`SIMILAR_PATTERN_TO` (10 edges — every pair in the cluster), and the other
+13 injuries (which have no engineered lead-in) get nothing — without being
+told in advance which injuries or which sessions to look at.
 
 It also writes each injury's signature — which fields deviated — onto the
 `Injury` node itself as `deviating_fields`. Step 3 only ever needed that
@@ -180,25 +203,24 @@ threshold writes a `Flag`, `(Athlete)-[:CURRENTLY]->(Flag)-[:MATCHES]->
   alarms."
 
 **Reference date matters here.** Default is per-athlete — their own most
-recent data date + 1 day, like a real nightly job. Run that way against
-the *full* seeded season, expect **zero flags**: nobody has a new spike in
-progress at the very end of the synthetic season, so finding nothing is
-the same true-negative discipline step 3 validated, not a bug. To see it
-actually catch something, override the reference date to a point *inside*
-the season where a real precedent already existed:
+recent data date + 1 day, like a real nightly job:
 
 ```bash
-python pattern_engine/run_pattern_engine.py   # persists both hamstring signatures first
-python flagging_agent/run_flagging_agent.py --as-of 2025-02-16
+python pattern_engine/run_pattern_engine.py   # persists all 5 hamstring signatures first
+python flagging_agent/run_flagging_agent.py
 ```
 
-Athlete-2 (Noah Rhodes)'s hamstring injury actually happened on
-2025-02-16 — as of that morning, their rolling window already contains
-all 3 of the real spiking sessions, and athlete-1 (Allison Hill)'s
-hamstring injury from five weeks earlier is already scored. This flags
-Noah against Allison's case, at confidence 1.0 — the predictive version of
-the story step 3 told retrospectively: the graph would have surfaced this
-*before* the injury, not just explained it after.
+Run this way against the *full* seeded season, expect real flags: the seed
+data (`seed/generators.py`) deliberately plants a load-spike + wellness-dip
+echo — the same signature as the hamstring cluster — in the final ~12 days
+of five injury-free athletes' own data, so their own "most recent data + 1
+day" reference date already lands inside it. Each of those five gets
+flagged against all 5 hamstring-cluster injuries, at confidence 0.86–1.0 —
+the predictive version of the story step 3 told retrospectively: the graph
+surfaces this pattern *before* an injury happens, not just explains it
+after one already has. `--as-of YYYY-MM-DD` still exists to evaluate the
+squad as of an arbitrary earlier point (e.g. testing that the *rest* of
+the squad correctly gets nothing at some random mid-season date).
 
 ## Explore it
 
@@ -291,11 +313,15 @@ checks its referenced ids exist first (404, not a silently-empty write),
 and Pydantic rejects a bad payload (wrong enum, RPE outside 0–10, a rehab
 date before its treatment) with 422 before the database is ever touched.
 
-The seed data already has treatment chains for 3 of the 6 injuries — try
-closing the loop on one of the other 3 (`injury-athlete1-ankle`,
-`injury-athlete3-ankle`, `injury-athlete5-calf`), which don't have one yet.
-Once you have, this is the closed-loop query CLAUDE.md describes — which
-protocols actually preceded a clean return versus a re-aggravation:
+The seed data already has treatment chains for 17 of the 18 injuries —
+`GET /injuries/open` finds the one that doesn't yet
+(`injury-athlete14-ankle`, freshly sustained and not yet seen by a
+physio), and `GET /treatments/open` / `GET /rehab-sessions/open` find a
+few more still mid-pipeline (a treatment with no rehab session logged
+yet, and rehab chains still awaiting their final outcome) to practice
+closing out. Once you have, this is the closed-loop query CLAUDE.md
+describes — which protocols actually preceded a clean return versus a
+re-aggravation:
 
 ```cypher
 MATCH (t:Treatment)-[:FOLLOWED_BY]->(r:RehabSession)-[:PRODUCED]->(o:Outcome)
