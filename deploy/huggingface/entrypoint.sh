@@ -21,7 +21,12 @@ set -euo pipefail
 # few hundred demo nodes/edges, not a tight squeeze the way Neo4j's heap
 # tuning was on the previous version of this file.
 echo "Starting Memgraph..."
-memgraph --memory-limit=250 &
+# The binary isn't on PATH in this image -- confirmed from Memgraph's own
+# Dockerfile source (memgraph/memgraph's release/docker/v6_deb.dockerfile
+# sets ENTRYPOINT ["/usr/lib/memgraph/memgraph"], not a PATH entry). A
+# bare `memgraph &` here silently backgrounds a "command not found" no-op,
+# which is why the wait loop below timed out on a real deploy.
+/usr/lib/memgraph/memgraph --memory-limit=250 &
 
 echo "Waiting for Memgraph to accept connections..."
 python3 -c "
