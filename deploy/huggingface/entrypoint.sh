@@ -14,6 +14,19 @@
 
 set -euo pipefail
 
+# Python's stdout is fully block-buffered (not line-buffered) whenever
+# it's not attached to a real terminal -- true for every python
+# invocation below, since this script's own stdout is just a pipe Render
+# captures. Without this, print() output from seed_data.py etc. sits in
+# an in-process buffer and only appears in the logs (all at once) when
+# the buffer fills or the process exits -- a real multi-minute step looks
+# like total silence followed by an instant-looking dump of every line,
+# with no way to tell which step actually took the time. This is why a
+# production deploy log showed "Connecting to bolt://localhost:7687" and
+# "Done." stamped at the exact same second despite ~5 minutes having
+# actually passed since "Seeding demo data..." printed.
+export PYTHONUNBUFFERED=1
+
 # --memory-limit is in MB. Render's free instance is 512MB total, shared
 # with the Python process started below -- Memgraph itself is far lighter
 # than Neo4j's JVM (no class metadata, thread-per-connection stacks, or
