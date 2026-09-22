@@ -22,6 +22,12 @@ const legendSheet = document.getElementById("legend-sheet");
 const zoomIn = document.getElementById("zoom-in");
 const zoomOut = document.getElementById("zoom-out");
 const zoomReset = document.getElementById("zoom-reset");
+const filterToggle = document.getElementById("filter-toggle");
+const filterPanel = document.getElementById("filter-panel");
+const filterActiveOnly = document.getElementById("filter-active-only");
+const filterTypes = document.getElementById("filter-types");
+const filterPositions = document.getElementById("filter-positions");
+const filterReset = document.getElementById("filter-reset");
 
 const MOBILE_QUERY = window.matchMedia("(max-width: 760px)");
 
@@ -242,10 +248,11 @@ function wireJumpLinks() {
 
 async function jumpToNode(id) {
   const alreadyLoaded = graph.hasNode(id);
-  if (!alreadyLoaded) await focusOnNode(id); // this already calls expandNode(id) once
+  if (!alreadyLoaded) await focusOnNode(id); // this already calls expandNode(id) once, and forceShows it
   const node = graph.getNode(id);
   if (!node) return;
   if (!alreadyLoaded) node._expanded = true; // avoid handleNodeClick expanding it a second time
+  graph.forceShow(id); // a relationship-row/match-card click is just as explicit as a search selection
   await handleNodeClick(node);
 }
 
@@ -310,6 +317,10 @@ async function focusOnNode(id) {
   }
   const subgraph = await expandNode(id).catch(() => null);
   if (subgraph) graph.merge(subgraph);
+  // Searching for something is an explicit ask to see it -- always show
+  // it, whatever the filter panel or a leftover ask-in-English snapshot
+  // currently says.
+  graph.forceShow(id);
   graph.highlight([id]);
 }
 
@@ -339,12 +350,19 @@ async function runAsk(question) {
         const nodes = await getNodesByIds(missing);
         graph.merge({ nodes, edges: [] });
       }
+      // A real filter, not just a highlight: the canvas narrows to
+      // exactly what was asked for. "Clear filter" (the answer band's
+      // dismiss button) restores the filter panel's normal view.
+      graph.setSnapshotFilter(answer.matched_ids);
       graph.highlight(answer.matched_ids);
+    } else {
+      graph.setSnapshotFilter(null);
     }
   } catch (err) {
     console.error("ask failed", err);
     lastAskAnswer = { status: "error", question, error: String(err) };
     renderAnswerBand(lastAskAnswer);
+    graph.setSnapshotFilter(null);
   } finally {
     askSubmit.disabled = false;
   }
@@ -355,7 +373,11 @@ function renderAnswerBand(answer) {
   let showCypher = false;
   if (answer.status === "ok") {
     showCypher = true;
-    body = `<div class="answer-summary">${escapeHtml(answer.summary)}</div>`;
+    const filterNote =
+      answer.matched_ids && answer.matched_ids.length > 0
+        ? `<div class="answer-filter-note">Showing ${answer.matched_ids.length} matched node${answer.matched_ids.length === 1 ? "" : "s"} on the graph — dismiss to see everything again.</div>`
+        : "";
+    body = `<div class="answer-summary">${escapeHtml(answer.summary)}</div>${filterNote}`;
   } else if (answer.status === "refused") {
     body = `<div class="answer-refused">Can't answer that with the current schema: ${escapeHtml(answer.refusal_reason || "")}</div>`;
   } else if (answer.status === "unsafe") {
@@ -379,7 +401,7 @@ function renderAnswerBand(answer) {
           : ""
       }
     </div>
-    <button type="button" class="answer-dismiss" id="answer-dismiss" aria-label="Dismiss answer">&times;</button>
+    <button type="button" class="answer-dismiss" id="answer-dismiss" aria-label="Dismiss answer and clear graph filter">&times;</button>
   `;
   answerBand.classList.remove("hidden");
 
@@ -396,7 +418,136 @@ function dismissAnswerBand() {
   lastAskAnswer = null;
   answerBand.classList.add("hidden");
   answerBand.innerHTML = "";
+  graph.setSnapshotFilter(null); // restore the filter panel's normal view
 }
+
+// --- Filters ---
+// Replaces the old server-side "curate to just athletes with something
+// going on" query entirely (api/graph.py's fetch_overview now loads
+// everything) -- three independent knobs feed one predicate handed to
+// graph.setTypeFilter: which node-type facets are on, whether an athlete
+// needs an injury/flag to show, and which positions are selected. An
+// ask-in-English snapshot (runAsk, above) takes over the canvas
+// independently of all of this and is restored to whatever this predicate
+// says the moment the answer band is dismissed.
+
+const TYPE_FACETS = [
+  { key: "athlete", label: "Athletes", labels: ["Athlete"], colorVar: "--athlete", defaultOn: true },
+  { key: "injury", label: "Injuries", labels: ["Injury"], colorVar: "--injury", defaultOn: true },
+  { key: "flag", label: "Flags", labels: ["Flag"], colorVar: "--flag", defaultOn: false },
+  {
+    key: "treatment",
+    label: "Treatment / rehab",
+    labels: ["Treatment", "Physio", "RehabSession", "Outcome"],
+    colorVar: "--treatment",
+    defaultOn: false,
+  },
+  { key: "wellness", label: "Wellness entries", labels: ["WellnessEntry"], colorVar: "--wellness", defaultOn: false },
+  { key: "metric", label: "Session metrics", labels: ["SessionMetric"], colorVar: "--metric", defaultOn: false },
+];
+
+const LABEL_TO_FACET = new Map();
+for (const facet of TYPE_FACETS) {
+  for (const label of facet.labels) LABEL_TO_FACET.set(label, facet.key);
+}
+
+function defaultFacetKeys() {
+  return new Set(TYPE_FACETS.filter((f) => f.defaultOn).map((f) => f.key));
+}
+
+let selectedFacets = defaultFacetKeys();
+let activeOnly = true;
+let selectedPositions = null; // null = every position selected (no filter)
+let knownPositions = [];
+
+function buildTypePredicate() {
+  return (node) => {
+    const facetKey = LABEL_TO_FACET.get(node.label);
+    if (facetKey && !selectedFacets.has(facetKey)) return false;
+    if (node.label === "Athlete") {
+      if (activeOnly) {
+        const hasInjuryOrFlag = graph
+          .edgesForNode(node.id)
+          .some((e) => e.type === "SUSTAINED" || e.type === "CURRENTLY");
+        if (!hasInjuryOrFlag) return false;
+      }
+      if (selectedPositions && !selectedPositions.has(node.properties?.position)) return false;
+    }
+    return true;
+  };
+}
+
+function applyFilters() {
+  graph.setTypeFilter(buildTypePredicate());
+}
+
+function renderTypeCheckboxes() {
+  filterTypes.innerHTML = TYPE_FACETS.map(
+    (facet) => `
+      <label>
+        <input type="checkbox" data-facet="${facet.key}" ${selectedFacets.has(facet.key) ? "checked" : ""} />
+        <span class="filter-swatch" style="background:var(${facet.colorVar})"></span>
+        ${escapeHtml(facet.label)}
+      </label>`
+  ).join("");
+  for (const input of filterTypes.querySelectorAll("input[type=checkbox]")) {
+    input.addEventListener("change", () => {
+      const key = input.dataset.facet;
+      if (input.checked) selectedFacets.add(key);
+      else selectedFacets.delete(key);
+      applyFilters();
+    });
+  }
+}
+
+function renderPositionCheckboxes(positions) {
+  knownPositions = positions;
+  if (positions.length === 0) {
+    filterPositions.innerHTML = '<p class="empty">No athletes loaded yet.</p>';
+    return;
+  }
+  const selected = selectedPositions; // null == all checked
+  filterPositions.innerHTML = positions
+    .map(
+      (pos) =>
+        `<label><input type="checkbox" data-position="${escapeHtml(pos)}" ${!selected || selected.has(pos) ? "checked" : ""} /> ${escapeHtml(pos)}</label>`
+    )
+    .join("");
+  for (const input of filterPositions.querySelectorAll("input[type=checkbox]")) {
+    input.addEventListener("change", () => {
+      const checked = filterPositions.querySelectorAll("input[type=checkbox]:checked");
+      selectedPositions = checked.length === positions.length ? null : new Set([...checked].map((el) => el.dataset.position));
+      applyFilters();
+    });
+  }
+}
+
+filterActiveOnly.addEventListener("change", () => {
+  activeOnly = filterActiveOnly.checked;
+  applyFilters();
+});
+
+filterReset.addEventListener("click", () => {
+  selectedFacets = defaultFacetKeys();
+  activeOnly = true;
+  selectedPositions = null;
+  filterActiveOnly.checked = true;
+  renderTypeCheckboxes();
+  renderPositionCheckboxes(knownPositions);
+  applyFilters();
+});
+
+filterToggle.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  const open = filterPanel.classList.toggle("open");
+  filterToggle.classList.toggle("active", open);
+});
+document.addEventListener("click", (ev) => {
+  if (filterPanel.classList.contains("open") && !ev.target.closest(".filter-box")) {
+    filterPanel.classList.remove("open");
+    filterToggle.classList.remove("active");
+  }
+});
 
 // --- Legend (floating panel on desktop, collapsed pill -> sheet on mobile) ---
 
@@ -483,6 +634,12 @@ initTheme();
 getOverview()
   .then((subgraph) => {
     graph.merge(subgraph);
+    const positions = [
+      ...new Set((subgraph.nodes || []).filter((n) => n.label === "Athlete").map((n) => n.properties?.position).filter(Boolean)),
+    ].sort();
+    renderTypeCheckboxes();
+    renderPositionCheckboxes(positions);
+    applyFilters();
     graphLoading.classList.add("hidden");
   })
   .catch((err) => {

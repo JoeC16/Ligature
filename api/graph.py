@@ -105,28 +105,25 @@ class _Accumulator:
 
 
 def fetch_overview(session) -> dict:
-    """Every Athlete with something going on (an Injury or a Flag) plus
-    every Injury, and the SUSTAINED/SIMILAR_PATTERN_TO edges between them.
-    The starting view — small, structural, none of the bulk session/
-    wellness nodes.
+    """Every Athlete, Injury, and Flag, plus the edges between them
+    (SUSTAINED, SIMILAR_PATTERN_TO, CURRENTLY, MATCHES). Still none of the
+    bulk session/wellness nodes -- those stay behind a click, always.
 
-    Deliberately NOT every Athlete and NOT any Flag nodes at all: on a
-    real squad, most athletes have nothing to show, and the flagging
-    agent writes one Flag per matched historical injury by design (each
-    stays traceable to one specific case, see flagging_agent/agent.py) --
-    an at-risk athlete matching a 5-injury cluster is 5 separate Flag
-    nodes, not one. Dumping all of that into the first view a physio sees
-    defeats the "small, curated" starting point this endpoint exists for.
-    A flagged athlete instead carries active_flag_count on its own
-    properties -- the frontend draws the same calm halo a Flag node gets,
-    on the athlete directly -- and clicking through (_expand_athlete)
-    reveals the actual Flag nodes and which injuries each one matched."""
+    Used to curate down to just "athletes with something going on" here,
+    server-side -- but on a real squad that's a judgment call (a physio
+    might genuinely want to see the whole roster, or just one position),
+    and baking it into the query meant the only way to see more was to
+    change the backend. That curation moved to the frontend as an actual
+    filter panel (default state: roughly this same curated shape) instead
+    -- see frontend/app.js. Every Athlete still carries active_flag_count
+    when the flagging agent's active for them, whether or not Flag nodes
+    themselves are in the client's current filter -- the halo that draws
+    doesn't depend on Flag nodes being visible."""
     acc = _Accumulator()
 
     for record in session.run(
         """
         MATCH (a:Athlete)
-        WHERE (a)-[:SUSTAINED]->(:Injury) OR (a)-[:CURRENTLY]->(:Flag)
         OPTIONAL MATCH (a)-[:CURRENTLY]->(f:Flag)
         RETURN a.id AS id, labels(a)[0] AS label, properties(a) AS properties, count(f) AS flag_count
         """
@@ -137,6 +134,9 @@ def fetch_overview(session) -> dict:
         acc.nodes[row["id"]] = row
 
     for record in session.run(f"MATCH (n:Injury) RETURN {_node_return('n')}"):
+        acc.add_node(record)
+
+    for record in session.run(f"MATCH (n:Flag) RETURN {_node_return('n')}"):
         acc.add_node(record)
 
     for record in session.run(
@@ -151,6 +151,19 @@ def fetch_overview(session) -> dict:
         """
     ):
         acc.add_edge("SIMILAR_PATTERN_TO", record["from_id"], record["to_id"], record["properties"])
+
+    for record in session.run(
+        "MATCH (a:Athlete)-[:CURRENTLY]->(f:Flag) RETURN a.id AS from_id, f.id AS to_id"
+    ):
+        acc.add_edge("CURRENTLY", record["from_id"], record["to_id"])
+
+    for record in session.run(
+        """
+        MATCH (f:Flag)-[r:MATCHES]->(i:Injury)
+        RETURN f.id AS from_id, i.id AS to_id, properties(r) AS properties
+        """
+    ):
+        acc.add_edge("MATCHES", record["from_id"], record["to_id"], record["properties"])
 
     return acc.result(session)
 

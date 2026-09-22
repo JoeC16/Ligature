@@ -129,6 +129,22 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
   let transform = { x: 0, y: 0, scale: 1 };
   let highlighted = new Set();
 
+  // --- Visibility / filtering ---
+  // Two independent mechanisms, not one combined predicate: typeFilter is
+  // a persistent rule (from the filter panel's checkboxes, reapplied to
+  // every node including ones added later via expand/search), snapshot is
+  // a one-shot override (from an ask-in-English answer, replacing
+  // whatever typeFilter would show until explicitly cleared). forceShown
+  // is neither -- an explicit click or search selection always wins over
+  // both, since hiding something the user just asked to see would be
+  // exactly backwards.
+  let typeFilter = () => true;
+  let snapshot = null; // Set of ids, or null
+  const forceShown = new Set();
+  const hidden = new Set(); // ids currently hidden -- tick() excludes these from physics too,
+  // not just CSS display:none, so a hidden node can't still shove the
+  // visible layout around from off-screen.
+
   function applyTransform() {
     viewport.setAttribute(
       "transform",
@@ -190,7 +206,7 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     const { width, height } = clientSize();
     const cx = width / 2 / transform.scale;
     const cy = height / 2 / transform.scale;
-    const list = [...nodes.values()];
+    const list = [...nodes.values()].filter((n) => !hidden.has(n.id));
 
     for (const n of list) {
       n.fx_ = 0;
@@ -217,6 +233,7 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     }
 
     for (const e of edges.values()) {
+      if (hidden.has(e.from) || hidden.has(e.to)) continue;
       const a = nodes.get(e.from);
       const b = nodes.get(e.to);
       if (!a || !b) continue;
@@ -533,7 +550,62 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
   function merge(subgraph) {
     for (const node of subgraph.nodes || []) ensureNode(node);
     for (const edge of subgraph.edges || []) ensureEdge(edge);
+    // Not just wake(): a newly-added node needs its visibility decided
+    // against whichever filter is currently active (typeFilter or a
+    // snapshot) before the physics sim starts moving it, same as every
+    // node already on screen.
+    recomputeVisibility();
+  }
+
+  // isVisible's precedence, most specific first: an explicit click or
+  // search selection (forceShown) always wins; failing that, an active
+  // ask-in-English snapshot shows only its matches; failing that, the
+  // filter panel's persistent typeFilter decides.
+  function isVisible(id) {
+    if (forceShown.has(id)) return true;
+    if (snapshot) return snapshot.has(id);
+    const node = nodes.get(id);
+    return node ? typeFilter(node) : true;
+  }
+
+  function recomputeVisibility() {
+    hidden.clear();
+    for (const [id, els] of nodeEls) {
+      const visible = isVisible(id);
+      if (!visible) hidden.add(id);
+      els.group.classList.toggle("node-hidden", !visible);
+    }
+    for (const [id, els] of edgeEls) {
+      const edge = edges.get(id);
+      const edgeHidden = !edge || hidden.has(edge.from) || hidden.has(edge.to);
+      els.line.classList.toggle("edge-hidden", edgeHidden);
+      els.hit.classList.toggle("edge-hidden", edgeHidden);
+      if (els.labelGroup) els.labelGroup.classList.toggle("edge-hidden", edgeHidden);
+    }
     wake();
+  }
+
+  function setTypeFilter(fn) {
+    typeFilter = fn;
+    snapshot = null;
+    forceShown.clear();
+    recomputeVisibility();
+  }
+
+  function setSnapshotFilter(ids) {
+    snapshot = ids && ids.length ? new Set(ids) : null;
+    forceShown.clear();
+    recomputeVisibility();
+  }
+
+  // An explicit click or search selection always shows its target,
+  // regardless of the active filter -- forceShown is cleared whenever a
+  // new filter or snapshot is set (both setters above), so these
+  // overrides don't linger and quietly punch permanent holes in whatever
+  // filter the user sets up next.
+  function forceShow(id) {
+    forceShown.add(id);
+    recomputeVisibility();
   }
 
   function highlight(ids) {
@@ -571,5 +643,8 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     zoomIn: () => zoomAtCenter(1.25),
     zoomOut: () => zoomAtCenter(0.8),
     resetView,
+    setTypeFilter,
+    setSnapshotFilter,
+    forceShow,
   };
 }

@@ -314,6 +314,100 @@ button.ask-submit {
   flex-grow: 1;
 }
 
+.filter-box {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.filter-box .icon-button.active {
+  border-color: var(--athlete);
+  color: var(--athlete);
+}
+
+.filter-panel {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  width: 260px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-float);
+  padding: var(--sp-4);
+  box-sizing: border-box;
+  z-index: 25;
+  display: none;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.filter-panel.open {
+  display: flex;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-section-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: var(--sp-1);
+}
+
+.filter-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.filter-checks label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-checks .filter-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.filter-reset {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--athlete);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.filter-reset:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 760px) {
+  .filter-panel {
+    right: -14px;
+    width: min(300px, calc(100vw - 28px));
+  }
+}
+
 .icon-button {
   flex-shrink: 0;
   width: 36px;
@@ -406,6 +500,12 @@ button.ask-submit {
   font-size: 11px;
   color: var(--ink-muted);
   margin-bottom: var(--sp-1);
+}
+
+.answer-band .answer-filter-note {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: var(--sp-1);
 }
 
 .answer-band .answer-actions {
@@ -673,6 +773,18 @@ main {
 }
 
 /* --- Nodes / edges --- */
+
+/* Filtered out (filter panel's type rules, or an ask-in-English snapshot
+   that doesn't include this node) -- display:none on the whole node
+   group (shape + label + halo + tooltip), not just the shape, and on the
+   full edge (line + hit target + confidence chip if any). graph.js's
+   tick() also excludes these ids from the physics sim itself, so a
+   hidden node can't still shove the visible layout around from
+   off-screen -- this class only needs to handle painting. */
+g.node-hidden,
+.edge-hidden {
+  display: none;
+}
 
 .node-shape {
   stroke-width: 2;
