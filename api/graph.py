@@ -39,6 +39,49 @@ def _edge_row(rel_type: str, from_id: str, to_id: str, properties: dict | None =
     }
 
 
+def _enrich_display_names(session, nodes: dict[str, dict]) -> None:
+    """Fills in properties['display_name'] for labels whose own properties
+    aren't human-readable, so the frontend never has to fall back to a raw
+    id like `flag-73hshd738` or `metric-0045`.
+
+    Most labels already carry something legible (Athlete.name, Injury.type,
+    Treatment.type, ...) — this only covers the two that don't: a Flag's
+    own properties are just confidence/date/resolution_state (what it
+    means is "this matches a specific prior injury", which only exists on
+    the far end of its MATCHES edge), and a SessionMetric's are just raw
+    load numbers (what it means is "this session, this date", which only
+    exists on the parent Session one hop up via PRODUCED). One batched
+    query per label, keyed off whatever's actually in `nodes` this call —
+    callers don't need to know which labels need it."""
+    flag_ids = [n["id"] for n in nodes.values() if n["label"] == "Flag"]
+    if flag_ids:
+        for record in session.run(
+            """
+            UNWIND $ids AS fid
+            MATCH (f:Flag {id: fid})-[:MATCHES]->(i:Injury)
+            RETURN fid, i.type AS injury_type
+            """,
+            ids=flag_ids,
+        ):
+            props = nodes[record["fid"]]["properties"]
+            pct = round((props.get("confidence") or 0) * 100)
+            props["display_name"] = f"{pct}% match: {record['injury_type']}"
+
+    metric_ids = [n["id"] for n in nodes.values() if n["label"] == "SessionMetric"]
+    if metric_ids:
+        for record in session.run(
+            """
+            UNWIND $ids AS mid
+            MATCH (s:Session)-[:PRODUCED]->(m:SessionMetric {id: mid})
+            RETURN mid, s.date AS session_date, s.type AS session_type
+            """,
+            ids=metric_ids,
+        ):
+            props = nodes[record["mid"]]["properties"]
+            session_type = (record["session_type"] or "session").title()
+            props["display_name"] = f"{session_type} — {record['session_date']}"
+
+
 class _Accumulator:
     """Dedupes nodes/edges by id across several session.run() calls."""
 
@@ -58,7 +101,8 @@ class _Accumulator:
         row = _edge_row(rel_type, from_id, to_id, properties)
         self.edges[row["id"]] = row
 
-    def result(self) -> dict:
+    def result(self, session) -> dict:
+        _enrich_display_names(session, self.nodes)
         return {"nodes": list(self.nodes.values()), "edges": list(self.edges.values())}
 
 
@@ -98,7 +142,7 @@ def fetch_overview(session) -> dict:
     ):
         acc.add_edge("MATCHES", record["from_id"], record["to_id"], record["properties"])
 
-    return acc.result()
+    return acc.result(session)
 
 
 def fetch_node_label(session, node_id: str) -> str | None:
@@ -142,7 +186,7 @@ def _expand_athlete(session, athlete_id: str) -> dict:
         acc.add_node(record)
         acc.add_edge("PRECEDED", record["id"], record["injury_id"], record["rel_properties"])
 
-    return acc.result()
+    return acc.result(session)
 
 
 def _expand_injury(session, injury_id: str) -> dict:
@@ -230,7 +274,7 @@ def _expand_injury(session, injury_id: str) -> dict:
             }
             acc.add_edge("PRODUCED", record["rehab_id"], record["outcome_id"])
 
-    return acc.result()
+    return acc.result(session)
 
 
 def _expand_flag(session, flag_id: str) -> dict:
@@ -256,7 +300,7 @@ def _expand_flag(session, flag_id: str) -> dict:
         acc.add_node(record)
         acc.add_edge("MATCHES", flag_id, record["id"], record["rel_properties"])
 
-    return acc.result()
+    return acc.result(session)
 
 
 def _expand_generic(session, node_id: str) -> dict:
@@ -290,7 +334,7 @@ def _expand_generic(session, node_id: str) -> dict:
         acc.add_node(record)
         acc.add_edge(record["rel_type"], record["id"], node_id)
 
-    return acc.result()
+    return acc.result(session)
 
 
 _EXPANDERS = {
@@ -327,12 +371,18 @@ def search_nodes(session, query: str, limit: int = 20) -> list[dict]:
 
 
 def fetch_nodes_by_ids(session, ids: list[str]) -> list[dict]:
-    rows = session.run(
+    """Used for /ask's matched_ids and search-result focusing — either can
+    legitimately name a Flag or SessionMetric id, so this goes through the
+    same accumulator as everything else to get display_name filled in too,
+    rather than returning raw rows directly."""
+    acc = _Accumulator()
+    for record in session.run(
         f"""
         UNWIND $ids AS id
         MATCH (n {{id: id}})
         RETURN {_node_return('n')}
         """,
         ids=ids,
-    ).data()
-    return [_node_row(r) for r in rows]
+    ):
+        acc.add_node(record)
+    return list(acc.result(session)["nodes"])
