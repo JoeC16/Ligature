@@ -1,7 +1,10 @@
 """Cypher pull layer for the flagging agent — thin, no logic. Reuses
-pattern_engine/queries.py's fetch_athlete_metrics/fetch_athlete_wellness
-rather than duplicating them; this module only adds what pattern_engine
-doesn't already fetch.
+pattern_engine/queries.py's fetch_all_metrics/fetch_all_wellness rather
+than duplicating them; this module only adds what pattern_engine doesn't
+already fetch. Both are one-round-trip, every-athlete-at-once queries —
+the flagging agent evaluates every athlete on the roster (not just the
+injured ones pattern_engine cares about), so looping a per-athlete fetch
+here would have been the worse of the two N-round-trip call sites.
 
 Named `fetch.py`, not `queries.py` — pattern_engine/ already has a
 queries.py, and this codebase's flat sys.path-based imports resolve a
@@ -17,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pattern_engine"))
-from queries import fetch_athlete_metrics, fetch_athlete_wellness  # noqa: E402,F401
+from queries import fetch_all_metrics, fetch_all_wellness  # noqa: E402,F401
 
 
 def fetch_athletes(session) -> list[dict]:

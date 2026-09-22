@@ -430,7 +430,9 @@ schema/
 deploy/
   render/README.md        # free-tier deploy: Render + the bundled Dockerfile
   huggingface/README.md    # same Dockerfile on HF Spaces — needs a paid plan there now
-  huggingface/entrypoint.sh # shared entrypoint for both: start DB -> seed -> pattern engine -> app
+  huggingface/build_seed.sh # build-time only: seed -> pattern engine -> flagging agent -> snapshot
+  huggingface/entrypoint.sh # shared runtime entrypoint for both: restore baked snapshot -> start DB -> app
+  huggingface/wait_for_bolt.py # shared "poll until Memgraph accepts Bolt" loop, used by both scripts above
 common/
   db.py                   # connect() / run_constraints() / write_nodes() / write_edges(),
                            #   shared by seed_data.py, ingest_data.py, and the API

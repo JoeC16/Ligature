@@ -35,7 +35,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from common import db  # noqa: E402
 
 from agent import compute_flags_for_athlete, latest_data_date  # noqa: E402
-from fetch import fetch_athlete_metrics, fetch_athlete_wellness, fetch_athletes, fetch_injury_signatures  # noqa: E402
+from fetch import fetch_all_metrics, fetch_all_wellness, fetch_athletes, fetch_injury_signatures  # noqa: E402
 
 FLAG_QUERY = """
     UNWIND $rows AS row
@@ -74,10 +74,19 @@ def main():
         injury_signatures = fetch_injury_signatures(session)
         print(f"{len(athletes)} athletes, {len(injury_signatures)} scored injuries to compare against\n")
 
+        # One round trip for every athlete's metrics, one for every
+        # athlete's wellness -- not 2*N. This loop used to call
+        # fetch_athlete_metrics/fetch_athlete_wellness per athlete, which
+        # on the full 30-player squad was 60 separate queries each paying
+        # their own Bolt round trip; that's the kind of fixed per-call
+        # cost that dominates wall time on a CPU-throttled host.
+        all_metrics = fetch_all_metrics(session)
+        all_wellness = fetch_all_wellness(session)
+
         all_flags = []
         for athlete in athletes:
-            metrics = fetch_athlete_metrics(session, athlete["id"])
-            wellness = fetch_athlete_wellness(session, athlete["id"])
+            metrics = all_metrics.get(athlete["id"], [])
+            wellness = all_wellness.get(athlete["id"], [])
 
             reference_date = override_date or latest_data_date(metrics, wellness)
             if reference_date is None:
