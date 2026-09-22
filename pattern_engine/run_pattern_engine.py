@@ -57,7 +57,7 @@ def main():
     driver = db.connect()
 
     with driver.session() as session:
-        print("Pulling injuries + athlete history from Neo4j...")
+        print("Pulling injuries + athlete history from the graph...")
         pulled = pull_all(session)
         print(f"  {len(pulled['injuries'])} injuries across {len(pulled['metrics_by_athlete'])} athletes")
 

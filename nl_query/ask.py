@@ -8,11 +8,11 @@ Usage:
 
 Pipeline: translate the question to Cypher (refusing rather than guessing
 if the schema can't answer it) -> reject anything that isn't read-only ->
-run it in a Neo4j read transaction -> explain the exact results in plain
+run it in a read-only transaction -> explain the exact results in plain
 language -> print the answer plus the underlying query and raw rows, so
 every answer is directly verifiable against the graph.
 
-Requires ANTHROPIC_API_KEY in .env (same pattern as the NEO4J_* vars).
+Requires ANTHROPIC_API_KEY in .env (same pattern as the GRAPH_DB_* vars).
 """
 
 from __future__ import annotations

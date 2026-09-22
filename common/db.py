@@ -1,7 +1,9 @@
-"""Shared Neo4j connection + MERGE-based write helpers. Also used, via the
-GRAPH_ENGINE env var, against Memgraph in the bundled free-tier deploy
-(see deploy/render/README.md) -- both speak Bolt/Cypher through the same
-neo4j driver package, so only run_constraints()'s DDL needs to branch.
+"""Shared graph DB connection + MERGE-based write helpers. Runs against
+Memgraph everywhere (local dev via docker-compose.yml, the bundled
+free-tier deploy) through the `neo4j` driver package -- Memgraph speaks
+the same Bolt protocol and Cypher dialect Neo4j's official Python driver
+expects, so that package name is the correct one to depend on regardless
+of which graph database is actually running.
 
 Used by both `seed/seed_data.py` (wipe-and-reload dev/demo data) and
 `ingest/ingest_data.py` (additive, rerunnable real-data ingestion). Both
@@ -19,27 +21,26 @@ from neo4j import GraphDatabase
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONSTRAINTS_FILE = REPO_ROOT / "schema" / "constraints.cypher"
-CONSTRAINTS_FILE_MEMGRAPH = REPO_ROOT / "schema" / "constraints.memgraph.cypher"
 
 
 def connect():
     load_dotenv(REPO_ROOT / ".env")
-    uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-    user = os.environ.get("NEO4J_USER", "neo4j")
-    password = os.environ.get("NEO4J_PASSWORD", "ligature-dev-pw")
+    uri = os.environ.get("GRAPH_DB_URI", "bolt://localhost:7687")
+    user = os.environ.get("GRAPH_DB_USER", "memgraph")
+    password = os.environ.get("GRAPH_DB_PASSWORD", "unused")
 
     print(f"Connecting to {uri} ...")
+    # Memgraph's community build (what this project runs everywhere)
+    # doesn't enforce authentication -- user/password are passed only
+    # because the driver's API always expects an auth tuple; there is no
+    # real credential to set, rotate, or mistype here.
     driver = GraphDatabase.driver(uri, auth=(user, password))
     driver.verify_connectivity()
     return driver
 
 
 def run_constraints(session):
-    # Only the bundled free-tier deploy sets GRAPH_ENGINE=memgraph (see the
-    # root Dockerfile) -- unset everywhere else, including local dev and
-    # ingest_data.py, so this is a no-op change for every other caller.
-    constraints_file = CONSTRAINTS_FILE_MEMGRAPH if os.environ.get("GRAPH_ENGINE") == "memgraph" else CONSTRAINTS_FILE
-    text = constraints_file.read_text()
+    text = CONSTRAINTS_FILE.read_text()
     statements = [s.strip() for s in text.split(";")]
     for statement in statements:
         # Strip full-line comments before checking if anything executable remains.

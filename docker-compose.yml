@@ -1,22 +1,24 @@
 services:
-  neo4j:
-    image: neo4j:5-community
-    container_name: ligature-neo4j
+  memgraph:
+    # memgraph-platform bundles Memgraph Lab (a browser-based Cypher
+    # explorer, at :3000 — the local equivalent of what Neo4j Browser +
+    # Bloom provided) and MAGE (graph algorithms library, the equivalent
+    # of Neo4j's GDS) alongside the database itself. The bundled free-tier
+    # deploy (see the root Dockerfile) uses the bare memgraph/memgraph
+    # image instead — no Lab/MAGE there, since that deploy is
+    # memory-constrained and headless anyway; local dev isn't.
+    image: memgraph/memgraph-platform:latest
+    container_name: ligature-memgraph
     ports:
-      - "7474:7474" # HTTP browser UI
       - "7687:7687" # Bolt
-    environment:
-      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-ligature-dev-pw}
-      # Graph Data Science plugin isn't needed until the pattern engine
-      # (build order step 3) — add NEO4J_PLUGINS=["graph-data-science"]
-      # here when that step starts.
+      - "3000:3000" # Memgraph Lab (browser UI)
     volumes:
-      - ligature_neo4j_data:/data
+      - ligature_memgraph_data:/var/lib/memgraph
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
 
 volumes:
-  ligature_neo4j_data:
+  ligature_memgraph_data:

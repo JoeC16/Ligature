@@ -1,5 +1,5 @@
 """Read-only enforcement for generated Cypher — the first of two layers
-(the second is running the query inside a Neo4j read transaction, see
+(the second is running the query inside a read-only transaction, see
 executor.py, which the server itself rejects a write inside). This layer
 exists so an unsafe query never even reaches the database.
 """

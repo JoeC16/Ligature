@@ -1,6 +1,6 @@
 """Cypher pull layer for the pattern engine — thin, no logic.
 
-Reshapes what's in Neo4j into the plain-dict shape engine.py's pure
+Reshapes what's in the graph into the plain-dict shape engine.py's pure
 functions consume: {"injuries": [...], "metrics_by_athlete": {...},
 "wellness_by_athlete": {...}}.
 """

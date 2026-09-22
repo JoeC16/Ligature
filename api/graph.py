@@ -5,9 +5,10 @@ relationships are "the bulk ones" (an Athlete's ~120 Sessions, ~280
 WellnessEntries) versus the handful worth surfacing on a click.
 
 Every node returned carries its full property map (for the detail panel);
-every edge carries a computed id ("{type}:{from}->{to}", not Neo4j's
-internal relationship id, which isn't a stable public contract) so the
-frontend can dedupe edges pulled in from more than one query.
+every edge carries a computed id ("{type}:{from}->{to}", not the
+database's internal relationship id, which isn't a stable public
+contract) so the frontend can dedupe edges pulled in from more than one
+query.
 """
 
 from __future__ import annotations

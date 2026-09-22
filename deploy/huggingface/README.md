@@ -10,12 +10,12 @@
 A free, public demo URL for Ligature — Memgraph (open-source, no
 authentication in the community build) and the app bundled into one
 container (`Dockerfile` at the repo root), because a Space gets exactly one.
-This is a demo convenience, not how the project is meant to run day to day —
-see the main [README](../../README.md) for normal local development
-(separate Neo4j via `docker-compose.yml`, `uvicorn --reload` — Neo4j's own
-tooling, Bloom and GDS, is worth having for real development; Memgraph is
-used only here, for the free-tier deploy, because it's light enough to
-bundle into one container without a separate managed database).
+This is a demo convenience, not how the project runs for local development
+day to day — see the main [README](../../README.md) (separate Memgraph
+via `docker-compose.yml`, `uvicorn --reload`; that compose file runs
+`memgraph-platform`, which bundles Memgraph Lab and MAGE for visual
+exploration and graph algorithms, unlike the bare image this Dockerfile
+uses for the memory-constrained free-tier deploy).
 
 ## One-time setup
 
@@ -74,29 +74,28 @@ gone on the next restart, and free Spaces do restart on their own
   but Memgraph starts much faster than a JVM database. Once warm, it
   behaves like any local run.
 - **No database password to manage.** Memgraph's community build doesn't
-  enforce authentication at all — the `NEO4J_USER`/`NEO4J_PASSWORD` env
-  vars in the `Dockerfile` are unused placeholders, kept only because
+  enforce authentication at all — the `GRAPH_DB_USER`/`GRAPH_DB_PASSWORD`
+  env vars in the `Dockerfile` are unused placeholders, kept only because
   `common/db.py`'s driver call always passes an auth tuple. This is safe
   because only the app's port (7860, what `app_port: 7860` in the root
   `README.md`'s frontmatter tells Spaces to proxy) is ever exposed —
   Memgraph's own port never leaves the container. Nothing sensitive in
   the seed data either way — it's synthetic.
 
-## Moving to something more robust later
+## Moving to something bigger later
 
 Nothing here locks you in. The app only ever talks to its graph database
-through three env vars (`NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD`,
-read in `common/db.py`) plus `GRAPH_ENGINE`, which only controls which
-schema constraints file gets applied — it has no idea whether that
-database is Memgraph bundled in the same container, or a real Neo4j
-instance a thousand miles away. To move to a real setup (e.g. a
-dedicated Neo4j instance + the app on its own host):
+through three env vars (`GRAPH_DB_URI` / `GRAPH_DB_USER` /
+`GRAPH_DB_PASSWORD`, read in `common/db.py`) — it has no idea whether
+that's this bundled container's Memgraph or a larger standalone instance
+a thousand miles away. To move to a bigger Memgraph deployment later
+(more memory than a free tier's ~512MB, its own persistent volume
+instead of this deploy's deliberate re-seed-every-boot ephemeral
+storage):
 
-1. Stand up Neo4j wherever you want it to actually live.
+1. Stand up Memgraph wherever you want it to actually live.
 2. Point those three env vars at it (as Space secrets, or in whatever
-   platform you move the app to), and unset `GRAPH_ENGINE` (or set it to
-   anything other than `memgraph`) so `schema/constraints.cypher` (the
-   Neo4j one) gets used instead of the Memgraph one.
+   platform you move the app to).
 3. Re-run `python seed/seed_data.py && python pattern_engine/run_pattern_engine.py`
    against it — or, once you have real club data, use
    `ingest/ingest_data.py` instead of the synthetic seed (see the main

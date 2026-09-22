@@ -1,4 +1,4 @@
-"""Flagging agent — pure computation, no Neo4j (same split as
+"""Flagging agent — pure computation, no graph database (same split as
 pattern_engine/engine.py, and for the same reason: testable against real
 generated data without a live database).
 

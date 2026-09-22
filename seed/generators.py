@@ -419,7 +419,7 @@ def make_injuries_and_treatment_chains(
     )
 
     # Note: tags are flattened to top-level properties (body_part, severity,
-    # assessment) rather than a nested map, since Neo4j node properties
+    # assessment) rather than a nested map, since graph node properties
     # can't hold nested maps — only primitives and arrays of primitives.
     clinical_notes = [
         {
