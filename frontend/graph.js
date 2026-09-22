@@ -254,7 +254,13 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     group.setAttribute("data-id", node.id);
     group.setAttribute("data-label", node.label);
     const shape = shapeElement(style.shape, style.r);
-    shape.setAttribute("class", "node-shape");
+    // node-enter: a one-shot appear animation, safe to leave on permanently
+    // since ensureNode only reaches this branch once per id. node-pulse:
+    // Flag nodes get a continuous soft glow -- they're literally the
+    // "look here" node type (CLAUDE.md's flagging agent output), so drawing
+    // the eye to one is surfacing evidence, not the graph making a call.
+    const pulse = node.label === "Flag" ? " node-pulse" : "";
+    shape.setAttribute("class", `node-shape node-enter${pulse}`);
     shape.setAttribute("fill", style.fill);
     group.appendChild(shape);
 

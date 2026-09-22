@@ -9,10 +9,20 @@
   </head>
   <body>
     <header>
-      <h1>
-        Ligature
-        <span class="tagline">graph-native sports biometric intelligence</span>
-      </h1>
+      <div class="brand">
+        <svg class="logo" width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+          <circle cx="13" cy="13" r="12" fill="var(--pitch)" />
+          <circle cx="8" cy="9" r="3" fill="var(--athlete)" />
+          <circle cx="18" cy="8" r="2.3" fill="var(--wellness)" />
+          <circle cx="16" cy="18" r="2.6" fill="var(--injury)" />
+          <line x1="8" y1="9" x2="18" y2="8" stroke="var(--mist-strong)" stroke-width="1" />
+          <line x1="8" y1="9" x2="16" y2="18" stroke="var(--mist-strong)" stroke-width="1" />
+        </svg>
+        <h1>
+          Ligature
+          <span class="tagline">graph-native sports biometric intelligence</span>
+        </h1>
+      </div>
 
       <div class="search-box">
         <input type="search" id="search-input" placeholder="Search athletes, injuries…" autocomplete="off" />
@@ -25,26 +35,49 @@
           <button type="submit" class="ask-submit" id="ask-submit">Ask</button>
         </form>
       </div>
+
+      <button type="button" class="icon-button" id="theme-toggle" aria-label="Toggle color theme" title="Toggle color theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4.2" />
+          <path d="M12 2.5v2.5M12 19v2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2.5 12H5M19 12h2.5M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 14.2A8.5 8.5 0 1 1 9.8 4a6.8 6.8 0 0 0 10.2 10.2Z" />
+        </svg>
+      </button>
     </header>
 
     <main>
       <div class="graph-pane">
         <svg id="graph-svg"></svg>
+        <div class="graph-loading" id="graph-loading">
+          <span class="spinner"></span>
+          <span id="graph-loading-text">Loading graph…</span>
+        </div>
         <div class="graph-hint">drag to pan · scroll to zoom · click a node to expand it</div>
       </div>
+      <div class="detail-backdrop" id="detail-backdrop"></div>
       <aside class="detail-panel" id="detail-panel">
-        <p class="empty">Click a node or edge to inspect it.</p>
+        <button type="button" class="detail-close" id="detail-close" aria-label="Close panel">&times;</button>
+        <div id="detail-body">
+          <p class="empty">Click a node or edge to inspect it.</p>
+        </div>
       </aside>
     </main>
 
     <footer class="legend">
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--athlete)"></span>Athlete</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--injury)"></span>Injury</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Flag</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--physio)"></span>Treatment / RehabSession / Physio</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--clean)"></span>Outcome</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--wellness)"></span>WellnessEntry</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:var(--injury-fill)"></span>SessionMetric</span>
+      <details open>
+        <summary>Legend</summary>
+        <div class="legend-items">
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--athlete)"></span>Athlete</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--injury)"></span>Injury</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--flag)"></span>Flag</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--physio)"></span>Treatment / RehabSession / Physio</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--clean)"></span>Outcome</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--wellness)"></span>WellnessEntry</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--injury-fill)"></span>SessionMetric</span>
+        </div>
+      </details>
     </footer>
 
     <script type="module" src="app.js"></script>
