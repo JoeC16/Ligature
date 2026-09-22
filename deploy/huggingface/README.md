@@ -7,11 +7,15 @@
 > needed). Keeping this doc for anyone who already has PRO or whose plan
 > includes it.
 
-A free, public demo URL for Ligature — Neo4j and the app bundled into one
+A free, public demo URL for Ligature — Memgraph (open-source, no
+authentication in the community build) and the app bundled into one
 container (`Dockerfile` at the repo root), because a Space gets exactly one.
 This is a demo convenience, not how the project is meant to run day to day —
 see the main [README](../../README.md) for normal local development
-(separate Neo4j via `docker-compose.yml`, `uvicorn --reload`).
+(separate Neo4j via `docker-compose.yml`, `uvicorn --reload` — Neo4j's own
+tooling, Bloom and GDS, is worth having for real development; Memgraph is
+used only here, for the free-tier deploy, because it's light enough to
+bundle into one container without a separate managed database).
 
 ## One-time setup
 
@@ -47,7 +51,7 @@ That's it — the Space builds, and in a few minutes you have a public URL at
 
 ## What happens on every container start
 
-`deploy/huggingface/entrypoint.sh` starts Neo4j, waits for it to accept
+`deploy/huggingface/entrypoint.sh` starts Memgraph, waits for it to accept
 connections, then re-seeds the demo graph from scratch
 (`seed/seed_data.py` → `pattern_engine/run_pattern_engine.py` →
 `flagging_agent/run_flagging_agent.py --as-of 2025-02-16`, the same demo
@@ -63,29 +67,36 @@ gone on the next restart, and free Spaces do restart on their own
 
 ## What to expect
 
-- **Cold start is slower than a typical Space.** Free-tier Spaces sleep
-  after ~15-30 minutes of no traffic, and this one has to boot Neo4j and
-  re-seed before the app answers a single request — expect 60-90 seconds
-  on the first visit after a sleep, not the few seconds a plain web app
-  would take. Once warm, it behaves like any local run.
-- The demo Neo4j password (`ligature-demo-pw`, set in the `Dockerfile`) is
-  not a real secret — Neo4j's ports (7474/7687) aren't exposed outside the
-  container, only the app's port 7860 is reachable at all (that's what
-  `app_port: 7860` in the root `README.md`'s frontmatter tells Spaces to
-  proxy). There's nothing sensitive in the seed data either way — it's
-  synthetic.
+- **Cold start is slower than a typical Space**, though less so than
+  the previous Neo4j-bundled version of this deploy — Free-tier Spaces
+  sleep after ~15-30 minutes of no traffic, and this one still has to
+  boot the database and re-seed before the app answers a single request,
+  but Memgraph starts much faster than a JVM database. Once warm, it
+  behaves like any local run.
+- **No database password to manage.** Memgraph's community build doesn't
+  enforce authentication at all — the `NEO4J_USER`/`NEO4J_PASSWORD` env
+  vars in the `Dockerfile` are unused placeholders, kept only because
+  `common/db.py`'s driver call always passes an auth tuple. This is safe
+  because only the app's port (7860, what `app_port: 7860` in the root
+  `README.md`'s frontmatter tells Spaces to proxy) is ever exposed —
+  Memgraph's own port never leaves the container. Nothing sensitive in
+  the seed data either way — it's synthetic.
 
 ## Moving to something more robust later
 
-Nothing here locks you in. The app only ever talks to Neo4j through three
-env vars (`NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD`, read in
-`common/db.py`) — it has no idea whether Neo4j is bundled in the same
-container or a thousand miles away. To move to a real setup (e.g. a
-dedicated Neo4j AuraDB instance + the app on its own host):
+Nothing here locks you in. The app only ever talks to its graph database
+through three env vars (`NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD`,
+read in `common/db.py`) plus `GRAPH_ENGINE`, which only controls which
+schema constraints file gets applied — it has no idea whether that
+database is Memgraph bundled in the same container, or a real Neo4j
+instance a thousand miles away. To move to a real setup (e.g. a
+dedicated Neo4j instance + the app on its own host):
 
 1. Stand up Neo4j wherever you want it to actually live.
 2. Point those three env vars at it (as Space secrets, or in whatever
-   platform you move the app to).
+   platform you move the app to), and unset `GRAPH_ENGINE` (or set it to
+   anything other than `memgraph`) so `schema/constraints.cypher` (the
+   Neo4j one) gets used instead of the Memgraph one.
 3. Re-run `python seed/seed_data.py && python pattern_engine/run_pattern_engine.py`
    against it — or, once you have real club data, use
    `ingest/ingest_data.py` instead of the synthetic seed (see the main
