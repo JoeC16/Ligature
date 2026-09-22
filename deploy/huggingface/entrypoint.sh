@@ -32,7 +32,7 @@ from neo4j import GraphDatabase
 
 for i in range(60):
     try:
-        driver = GraphDatabase.driver('bolt://localhost:7687', auth=('${NEO4J_USER}', '${NEO4J_PASSWORD}'))
+        driver = GraphDatabase.driver('bolt://localhost:7687', auth=('${GRAPH_DB_USER}', '${GRAPH_DB_PASSWORD}'))
         driver.verify_connectivity()
         driver.close()
         print('Memgraph is up.')

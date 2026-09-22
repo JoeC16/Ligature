@@ -1,4 +1,4 @@
-"""Pattern engine — pure computation, no Neo4j.
+"""Pattern engine — pure computation, no graph database.
 
 For every injury, looks back LOOKBACK_DAYS across that athlete's own
 SessionMetric and WellnessEntry history, scores which fields deviated from
@@ -12,7 +12,7 @@ SessionMetric and WellnessEntry history, scores which fields deviated from
   direction) per injury, then clusters injuries across the whole athlete
   pool by shared-signature overlap into SIMILAR_PATTERN_TO edges
 
-Every function here takes and returns plain dicts/lists — no Neo4j driver
+Every function here takes and returns plain dicts/lists — no driver
 objects — so it can be tested against seed/generators.py's real synthetic
 output directly, without a live database.
 """
@@ -246,7 +246,7 @@ def cluster_injuries(injuries: list[dict], signatures: dict[str, dict[str, float
 
 def compute_all(pulled: dict) -> dict:
     """pulled = {"injuries": [...], "metrics_by_athlete": {...}, "wellness_by_athlete": {...}}
-    (exactly what pattern_engine/queries.py pulls from Neo4j, or what
+    (exactly what pattern_engine/queries.py pulls from the graph, or what
     seed/generators.py's output reshapes into for testing)."""
     preceded_all = []
     signatures: dict[str, dict[str, float]] = {}

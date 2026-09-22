@@ -84,6 +84,20 @@ system produces.
    for its Graph Data Science library (similarity/community detection
    algorithms — don't hand-roll this).
 
+   **Actually built on Memgraph**, everywhere — local dev and every
+   deploy target. Neo4j AuraDB (the managed cloud option used for the
+   first free-tier deploy attempt) hit an unresolved account-side
+   authentication failure that reproduced identically across independent
+   networks with verified-correct credentials; Memgraph's community
+   build has no authentication layer to fail in the first place, and
+   is light enough to bundle into a single free-tier container, which
+   Neo4j's JVM never was. `docker-compose.yml` runs
+   `memgraph/memgraph-platform`, which bundles Memgraph Lab (the local
+   equivalent of Neo4j Browser/Bloom for visual exploration) and MAGE
+   (the equivalent of the GDS library) — so the tooling rationale above
+   is still satisfied, just by Memgraph's own equivalents rather than
+   Neo4j's.
+
 3. **Pattern engine** — background job, not computed live per-query. For
    every injury, looks back N days across metrics/wellness for that
    athlete, scores which combinations deviated from *that athlete's own*
@@ -129,7 +143,7 @@ system produces.
 
 ## Build order (don't build top-down)
 
-1. Graph schema + local Neo4j instance, seeded with synthetic test data
+1. Graph schema + local Memgraph instance, seeded with synthetic test data
 2. Ingestion pipeline (start with CSV import — most exports land this way)
 3. Pattern engine — run retrospectively on historical/seed data first
 4. Treatment/session input — simple internal form or API endpoint, not

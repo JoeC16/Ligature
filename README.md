@@ -21,13 +21,13 @@ the full product/architecture writeup and graph schema.
 > Face Spaces — free until a July 2026 policy change, now needs a paid PRO
 > plan for a Docker Space; the frontmatter above is Spaces' own config
 > format in case you go that route, harmless everywhere else). Local dev
-> still runs on Neo4j (below) — Memgraph is only used for this bundled
-> free-tier deploy.
+> runs on Memgraph too (below) — see CLAUDE.md's "Graph store" note for
+> why this moved off Neo4j.
 > Everything below this point is the normal project docs.
 
 This repo currently implements **all 7 build order steps**:
 
-1. A local Neo4j instance with the schema as Cypher constraints, seeded with
+1. A local Memgraph instance with the schema as Cypher constraints, seeded with
    one season of realistic synthetic data for 5 athletes — sessions,
    wellness entries, injuries, and treatment/rehab/outcome chains. Two of
    the six injuries (both hamstring strains) have a deliberately engineered
@@ -79,7 +79,7 @@ Requires Docker and Python 3.11+.
 
 ```bash
 cp .env.example .env          # defaults are fine for local dev
-docker compose up -d          # starts Neo4j (Bolt on 7687, browser on 7474)
+docker compose up -d          # starts Memgraph (Bolt on 7687, Lab UI on 3000)
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -95,7 +95,10 @@ safe to rerun — generation is seeded, so every run produces identical
 data (`generators.SEED`). It loads raw data only: `PRECEDED` and
 `SIMILAR_PATTERN_TO` don't exist until you run the pattern engine next.
 
-Neo4j Browser: http://localhost:7474 (user `neo4j`, password from `.env`).
+Memgraph Lab: http://localhost:3000 — connect using host `memgraph`
+(the compose service name; use `localhost` if running Lab outside
+Docker) and port `7687`. No username/password: Memgraph's community
+build (what `docker-compose.yml` runs) doesn't enforce authentication.
 
 ## What gets seeded
 
@@ -199,7 +202,7 @@ the story step 3 told retrospectively: the graph would have surfaced this
 
 ## Explore it
 
-A few queries to paste into Neo4j Browser:
+A few queries to paste into Memgraph Lab:
 
 ```cypher
 // The hamstring lead-up: which sessions preceded which injury, and how strongly
@@ -250,7 +253,7 @@ Cypher, constrained to the exact schema in `nl_query/schema_context.py` —
 CLAUDE.md: "constrain generation to this schema to bound hallucination
 risk"; if the question can't be answered with this schema, it says so
 instead of guessing) → **guard** (a read-only keyword check) → **execute**
-(inside a Neo4j read transaction — the server itself, not just the guard,
+(inside a read-only transaction — the server itself, not just the guard,
 rejects a write) → **explain** (a second Claude call, shown only the exact
 rows the query returned, instructed to state only what they show). The
 output is the plain-language answer, then the Cypher that was actually run
@@ -260,7 +263,7 @@ back to the underlying nodes so a physio can verify it directly."
 **Two things this tool never does**, both enforced in code, not just
 prompted: it never writes to the graph (a write-keyword check before
 anything is sent to the database, then the query still runs inside a
-read-only Neo4j transaction that would itself reject a write), and it
+read-only transaction that would itself reject a write), and it
 never answers from the model's own knowledge — the explanation step is
 only ever shown the literal rows the query returned.
 
@@ -383,21 +386,19 @@ independent demonstrations sitting in the same graph.
 ## Layout
 
 ```
-docker-compose.yml       # local Neo4j (community edition)
-Dockerfile                # bundled Memgraph + app image, free-tier deploy only — see deploy/
-.env.example             # NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD / ANTHROPIC_API_KEY
+docker-compose.yml       # local Memgraph (memgraph-platform: DB + Lab UI + MAGE algorithms)
+Dockerfile                # bundled Memgraph (bare, no Lab/MAGE) + app image, for the free-tier deploy
+.env.example             # GRAPH_DB_URI / GRAPH_DB_USER / GRAPH_DB_PASSWORD / ANTHROPIC_API_KEY
 requirements.txt
 schema/
-  constraints.cypher      # uniqueness constraints + indexes, one per node type (Neo4j, local dev)
-  constraints.memgraph.cypher  # same, Memgraph DDL syntax — used only when GRAPH_ENGINE=memgraph
+  constraints.cypher      # uniqueness constraints + indexes, one per node type (Memgraph DDL)
 deploy/
-  render/README.md        # free-tier deploy: Render + the bundled Dockerfile (Memgraph)
+  render/README.md        # free-tier deploy: Render + the bundled Dockerfile
   huggingface/README.md    # same Dockerfile on HF Spaces — needs a paid plan there now
   huggingface/entrypoint.sh # shared entrypoint for both: start DB -> seed -> pattern engine -> app
 common/
   db.py                   # connect() / run_constraints() / write_nodes() / write_edges(),
-                           #   shared by seed_data.py, ingest_data.py, and the API —
-                           #   run_constraints() picks the Neo4j or Memgraph DDL file via GRAPH_ENGINE
+                           #   shared by seed_data.py, ingest_data.py, and the API
 api/
   app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome,
                             #   flag review (GET /flags/unreviewed, POST /flags/{id}/resolve),
@@ -433,7 +434,7 @@ nl_query/
   schema_context.py         # the fixed schema description given to the LLM (the hallucination-risk bound)
   translator.py              # question -> Cypher (Claude, structured output)
   guard.py                    # pure function — read-only keyword check, the first of two write-blocking layers
-  executor.py                  # runs Cypher inside a Neo4j read transaction — the second layer
+  executor.py                  # runs Cypher inside a read-only transaction — the second layer
   responder.py                  # (question, cypher, rows) -> plain-language answer, shown only the real rows
 ingest/
   ingest_data.py           # additive/upsert CLI entry point for real CSV exports
@@ -448,14 +449,15 @@ ingest/
 
 ## Notes
 
-- The Graph Data Science plugin isn't enabled yet. The pattern engine's
-  `PRECEDED`/`SIMILAR_PATTERN_TO` scoring is plain Python (pairwise, over
-  6 seeded injuries — GDS would be overkill at this scale). GDS is still
+- MAGE (Memgraph's graph-algorithms library, bundled in the
+  `memgraph-platform` image `docker-compose.yml` uses for local dev)
+  isn't used yet. The pattern engine's `PRECEDED`/`SIMILAR_PATTERN_TO`
+  scoring is plain Python (pairwise, over 6 seeded injuries — a real
+  algorithms library would be overkill at this scale). It's still
   earmarked for later: materializing `Cluster` nodes via real community
   detection once there's enough `SIMILAR_PATTERN_TO` density for that to
-  mean something. See the comment in `docker-compose.yml` for where to add
-  the plugin when that's built. `Cluster` stays unpopulated for now
-  (constrained in the schema, no writer yet) — `Flag` is populated, by
+  mean something. `Cluster` stays unpopulated for now (constrained in the
+  schema, no writer yet) — `Flag` is populated, by
   `flagging_agent/run_flagging_agent.py` (step 6).
 - `Physio` and `Outcome` node types are declared in `schema/constraints.cypher`
   even though CLAUDE.md's "Node types" list doesn't name them — both are

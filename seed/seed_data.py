@@ -1,4 +1,4 @@
-"""Seed the local Neo4j instance with the Ligature schema + synthetic data.
+"""Seed the local graph database with the Ligature schema + synthetic data.
 
 Usage:
     python seed/seed_data.py
@@ -137,7 +137,7 @@ def main():
         print("Generating synthetic season data...")
         data = generators.generate_all()
 
-        print("Writing to Neo4j...")
+        print("Writing to the graph...")
         load(session, data)
 
         db.print_summary(session)

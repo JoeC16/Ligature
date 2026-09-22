@@ -5,12 +5,14 @@
 # container, so the graph DB and the app share this image.
 #
 # NOT how this project runs in normal local development — that's
-# docker-compose.yml (a separate Neo4j container, since Neo4j's own
-# tooling — Bloom, GDS — is worth having for real development) + `uvicorn
-# api.app:app --reload` on the host, per the main README. Memgraph is used
-# here specifically because it doesn't carry Neo4j's JVM memory overhead,
-# which didn't fit in a free tier's ~512MB no matter how it was tuned —
-# see the deploy docs for that whole story.
+# docker-compose.yml (a separate Memgraph container, with Lab + MAGE
+# bundled for visual exploration and graph algorithms) + `uvicorn
+# api.app:app --reload` on the host, per the main README. This Dockerfile
+# uses the bare memgraph/memgraph image instead (no Lab/MAGE) since this
+# deploy is memory-constrained and headless — a free tier's ~512MB is
+# already the whole reason this project moved off Neo4j's JVM, which
+# didn't fit no matter how it was tuned; see the deploy docs for that
+# whole story.
 #
 # NOT build-tested end to end in this sandbox (no Docker daemon
 # available here) — reviewed carefully, but the first real build on your
@@ -47,15 +49,12 @@ COPY . .
 RUN chmod +x deploy/huggingface/entrypoint.sh
 
 # Memgraph's community build has no authentication layer at all, so
-# NEO4J_USER/PASSWORD below are unused placeholders kept only because
+# GRAPH_DB_USER/PASSWORD below are unused placeholders kept only because
 # common/db.py's connect() always passes an auth tuple to the driver —
 # there is no password to reset, rotate, or mistype for this deploy path.
-# GRAPH_ENGINE=memgraph is what makes common/db.py's run_constraints()
-# use schema/constraints.memgraph.cypher instead of the Neo4j one.
-ENV GRAPH_ENGINE=memgraph
-ENV NEO4J_USER=memgraph
-ENV NEO4J_PASSWORD=unused
-ENV NEO4J_URI=bolt://localhost:7687
+ENV GRAPH_DB_USER=memgraph
+ENV GRAPH_DB_PASSWORD=unused
+ENV GRAPH_DB_URI=bolt://localhost:7687
 ENV PORT=7860
 
 EXPOSE 7860

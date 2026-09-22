@@ -8,7 +8,7 @@ so drift here directly causes bad or hallucinated queries.
 
 SCHEMA_DESCRIPTION = """
 You are translating a question about a sports team's graph database into a
-single Cypher query for Neo4j. Use ONLY the labels, relationship types, and
+single Cypher query for Memgraph. Use ONLY the labels, relationship types, and
 properties listed below — nothing else exists in this graph.
 
 NODE TYPES AND THEIR PROPERTIES:

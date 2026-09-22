@@ -45,32 +45,29 @@ Your app is live at `https://<service-name>.onrender.com`.
   starts far faster than a JVM database does.
 - **Auto-redeploys on every push to `main`** — a Render default.
 - **No database password to manage.** Memgraph's community build (what
-  the Dockerfile uses) doesn't enforce authentication — the
-  `NEO4J_USER`/`NEO4J_PASSWORD` env vars baked into the Dockerfile are
-  unused placeholders, kept only because `common/db.py`'s driver call
-  always passes an auth tuple. Nothing to reset or rotate for this deploy.
-  This is fine because only the app's port (`7860`, mapped via `app_port`
-  in the root `README.md`'s frontmatter) is ever exposed to the internet
-  — Memgraph's own port never leaves the container.
+  the Dockerfile uses, and what `docker-compose.yml` runs for local dev
+  too — see the main README) doesn't enforce authentication — the
+  `GRAPH_DB_USER`/`GRAPH_DB_PASSWORD` env vars baked into the Dockerfile
+  are unused placeholders, kept only because `common/db.py`'s driver call
+  always passes an auth tuple. Nothing to reset or rotate, anywhere in
+  this project. This is fine because only the app's port (`7860`, mapped
+  via `app_port` in the root `README.md`'s frontmatter) is ever exposed
+  to the internet — Memgraph's own port never leaves the container.
 
-## Moving to something more robust later
+## Moving to something bigger later
 
-Same as before: the app only ever talks to its graph database through
-three env vars (`NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD`, read in
-`common/db.py`) — plus `GRAPH_ENGINE`, which only affects which
-constraints file gets applied (`schema/constraints.cypher` for Neo4j,
-`schema/constraints.memgraph.cypher` for Memgraph). Moving to a real
-Neo4j instance later (for Bloom, GDS, or just because you want Neo4j
-specifically) is:
+The app only ever talks to its graph database through three env vars
+(`GRAPH_DB_URI` / `GRAPH_DB_USER` / `GRAPH_DB_PASSWORD`, read in
+`common/db.py`) — it has no idea whether that's this bundled container's
+Memgraph or a larger standalone instance elsewhere. Moving to a bigger
+Memgraph deployment later (more memory than a free tier's ~512MB, its
+own persistent volume instead of this deploy's deliberate re-seed-every-
+boot ephemeral storage) is:
 
-1. Stand up Neo4j wherever you want it to actually live.
-2. Point those three env vars at it, and unset `GRAPH_ENGINE` (or set it
-   to anything other than `memgraph`) so the Neo4j constraints file is
-   used.
+1. Stand up Memgraph wherever you want it to actually live.
+2. Point those three env vars at it.
 3. Re-run `python seed/seed_data.py && python pattern_engine/run_pattern_engine.py`
    against it — or, for real club data, `ingest/ingest_data.py` instead
    (see the main README's "Ingest real (or real-shaped) data" section).
 
-No code changes either way — this repo's `docker-compose.yml` +
-`uvicorn --reload` local-dev setup already runs on Neo4j unchanged; the
-bundled Memgraph path only exists for this free-tier deploy.
+No code changes either way.
