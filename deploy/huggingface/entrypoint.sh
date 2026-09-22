@@ -75,12 +75,14 @@ python seed/seed_data.py
 echo "Running the pattern engine..."
 python pattern_engine/run_pattern_engine.py
 
-# Without --as-of, the flagging agent correctly finds zero flags against
-# the full seeded season (see main README's "Flag athletes at risk"
-# section) — for a demo, run it against the date where a real historical
-# precedent already exists, so a visitor actually has a Flag to click on.
-echo "Running the flagging agent (demo --as-of date)..."
-python flagging_agent/run_flagging_agent.py --as-of 2025-02-16
+# No --as-of needed: seed/generators.py plants a load-spike + wellness-dip
+# echo (same signature as the hamstring cluster) in the final ~12 days of
+# every athlete's own generated data, so the default per-athlete reference
+# date (their own latest data + 1 day) already lands inside it -- a
+# visitor gets real Flags without the demo relying on a hand-picked
+# calendar date.
+echo "Running the flagging agent..."
+python flagging_agent/run_flagging_agent.py
 
 echo "Starting the app on port ${PORT}..."
 exec uvicorn api.app:app --host 0.0.0.0 --port "${PORT}"

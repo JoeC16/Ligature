@@ -34,12 +34,23 @@ def fetch_open_treatments(session) -> list[dict]:
 
 
 def fetch_open_rehab_sessions(session) -> list[dict]:
+    """One row per treatment chain still awaiting an outcome -- its most
+    recent rehab session, not every session in the series. Only the LAST
+    session in a chain ever gets a PRODUCED->Outcome edge (CLAUDE.md: one
+    Outcome per chain), so an earlier completed check-in never has one
+    either -- checking "this session has no outcome" alone would wrongly
+    call every non-final session of an already-*resolved* multi-session
+    chain "open" too. The chain-level check (does ANY of this treatment's
+    sessions have an outcome) is what actually distinguishes a resolved
+    chain from a genuinely still-ongoing one."""
     return session.run(
         """
         MATCH (t:Treatment)-[:FOLLOWED_BY]->(r:RehabSession)
-        WHERE NOT (r)-[:PRODUCED]->(:Outcome)
-        RETURN r.id AS id, t.id AS treatment_id, r.date AS date, r.protocol AS protocol
-        ORDER BY r.date
+        WHERE NOT (t)-[:FOLLOWED_BY]->(:RehabSession)-[:PRODUCED]->(:Outcome)
+        WITH t, r ORDER BY r.date DESC
+        WITH t, collect(r)[0] AS latest
+        RETURN latest.id AS id, t.id AS treatment_id, latest.date AS date, latest.protocol AS protocol
+        ORDER BY date
         """
     ).data()
 

@@ -1,18 +1,30 @@
 """Synthetic data generation for the Ligature seed graph.
 
-Produces one season (~40 weeks) for 5 athletes: a shared team session
-calendar, per-athlete SessionMetric and WellnessEntry values generated
-around a per-athlete baseline (individual variance matters more than a
-population baseline — see CLAUDE.md's pattern engine section), a handful
-of injuries, and treatment/rehab/outcome chains for a few of them.
+Produces one season (~40 weeks) for a 30-player squad: a shared team
+session calendar, per-athlete SessionMetric and WellnessEntry values
+generated around a per-athlete baseline (individual variance matters more
+than a population baseline — see CLAUDE.md's pattern engine section), and
+a deliberate mix of three scenarios across the squad:
 
-Two of the injuries (both hamstring strains, different athletes) get a
-deliberately engineered spike in load metrics and dip in wellness in the
-7-10 days before onset — ground truth for pattern_engine/ to rediscover
-independently once it runs against the seeded graph. This module bakes
-that spike into the metric/wellness values and records which SessionMetric
-ids were part of each athlete's lead-up window, for tests to check the
-engine's PRECEDED output against.
+- injury-free (12 athletes) — no Injury node at all. Five of these carry
+  a deliberately engineered load-spike + wellness-dip echo in the final
+  ~12 days of the season with no injury following it — the "currently
+  healthy but showing the same signature as a prior injury" case the
+  flagging agent (build order step 6) exists to catch.
+- injured and returned (12 athletes) — one injury each, a multi-session
+  rehab program, and a final Outcome (clean_return or re_aggravation).
+- still injured, ongoing rehab (6 athletes) — one injury each and a
+  multi-session rehab program with NO Outcome yet, dated late enough in
+  the season that the most recent session reads as "still in progress,"
+  not abandoned.
+
+Five athletes (four returned, one still in rehab) share the same
+hamstring-strain-preceded-by-a-load-spike signature — a real cross-
+athlete cluster for pattern_engine's SIMILAR_PATTERN_TO to find, not a
+single isolated pair. This module bakes the spike into the metric/
+wellness values (and the injury-free echo cohort's, separately) and
+records which SessionMetric ids were part of each lead-in window, for
+tests to check the engine's PRECEDED output against.
 
 All randomness is seeded, so re-running this module produces identical
 output — that's what makes the seed script safely rerunnable.
@@ -30,7 +42,17 @@ SEED = 42
 SEASON_START = date(2024, 8, 6)  # a Tuesday
 SEASON_WEEKS = 40
 
-POSITIONS = ["Winger", "Centre-Back", "Striker", "Fullback", "Midfielder"]
+ATHLETE_COUNT = 30
+# A realistic squad composition, not an even split.
+SQUAD_POSITIONS = (
+    ["Goalkeeper"] * 2
+    + ["Centre-Back"] * 5
+    + ["Fullback"] * 5
+    + ["Midfielder"] * 8
+    + ["Winger"] * 5
+    + ["Striker"] * 5
+)
+assert len(SQUAD_POSITIONS) == ATHLETE_COUNT
 
 # Weekday offsets (0=Mon) from the Tuesday that starts each week, and the
 # session type run on that day. Wednesday gym sessions produce no
@@ -48,6 +70,21 @@ DRILLS_BY_TYPE = {
     "match": ["league fixture"],
     "gym": ["lower-body strength", "upper-body strength", "mobility + core"],
 }
+
+# Non-hamstring injury variety, cycled across the "other returned" and
+# "still injured" athletes. (type, body_part, mechanism); a "{side}"
+# placeholder in body_part gets filled with left/right alternating by
+# athlete index, for the limb-specific ones.
+INJURY_CATALOG = [
+    ("ankle sprain", "{side} ankle", "awkward landing during small-sided game"),
+    ("groin strain", "{side} adductor longus", "change-of-direction sprint"),
+    ("calf strain", "{side} gastrocnemius", "explosive sprint during training"),
+    ("quad strain", "{side} rectus femoris", "kicking motion during a match"),
+    ("knee sprain", "{side} medial collateral ligament", "twisting tackle"),
+    ("shoulder sprain", "{side} acromioclavicular joint", "fall on outstretched arm"),
+    ("hip flexor strain", "{side} iliopsoas", "sprint acceleration"),
+    ("achilles tendinopathy", "{side} achilles tendon", "repeated high-speed running load"),
+]
 
 
 # Sequential, not random — so IDs (not just values) are identical across
@@ -72,16 +109,20 @@ def week_session_dates(week_idx: int) -> dict[str, date]:
     }
 
 
-def make_athletes(rng: random.Random, np_rng: np.random.Generator, faker: Faker) -> list[dict]:
+def week_date(week_idx: int, weekday_offset: int) -> date:
+    return SEASON_START + timedelta(weeks=week_idx, days=weekday_offset)
+
+
+def make_athletes(np_rng: np.random.Generator, faker: Faker) -> list[dict]:
     athletes = []
-    for i, position in enumerate(POSITIONS):
+    for i, position in enumerate(SQUAD_POSITIONS):
         athlete_id = f"athlete-{i + 1}"
         athletes.append(
             {
                 "id": athlete_id,
                 "name": faker.name(),
                 "position": position,
-                "age": int(np_rng.integers(21, 30)),
+                "age": int(np_rng.integers(19, 34)),
                 # Per-athlete baselines — this is the "own baseline, not
                 # population baseline" data the pattern engine (step 3)
                 # will later compute deviations against.
@@ -117,14 +158,15 @@ def make_sessions() -> list[dict]:
     return sessions
 
 
-def _spike_windows(injury_leadins: list[dict]) -> dict[str, list[tuple[date, date]]]:
-    """athlete_id -> list of (start, end) date ranges to spike, from injury lead-ins."""
+def _spike_windows(spike_specs: list[dict]) -> dict[str, list[tuple[date, date]]]:
+    """athlete_id -> list of (start, end) date ranges to spike. Each spec
+    is either a real injury lead-in (has injury_id) or a standalone
+    "at risk but not yet injured" echo (injury_id is None) -- both spike
+    the underlying metric/wellness values identically; only the former
+    also gets PRECEDED ground-truth bookkeeping (see make_metrics_and_wellness)."""
     windows: dict[str, list[tuple[date, date]]] = {}
-    for leadin in injury_leadins:
-        injury_date = leadin["injury_date"]
-        start = injury_date - timedelta(days=leadin["lookback_days"])
-        end = injury_date - timedelta(days=1)
-        windows.setdefault(leadin["athlete_id"], []).append((start, end))
+    for spec in spike_specs:
+        windows.setdefault(spec["athlete_id"], []).append((spec["window_start"], spec["window_end"]))
     return windows
 
 
@@ -132,23 +174,24 @@ def make_metrics_and_wellness(
     np_rng: np.random.Generator,
     athletes: list[dict],
     sessions: list[dict],
-    injury_leadins: list[dict],
+    spike_specs: list[dict],
 ) -> tuple[list[dict], list[dict], dict[str, list[str]]]:
-    """Returns (session_metrics, wellness_entries, spiked_metric_ids_by_injury).
+    """spike_specs: [{"athlete_id", "window_start", "window_end", "injury_id" (or None)}, ...]
 
-    spiked_metric_ids_by_injury maps injury_leadins[i]['injury_id'] -> the
-    SessionMetric ids generated inside that injury's lead-up window — the
-    ground truth pattern_engine/'s own PRECEDED computation is checked
-    against in tests, since neither reads the other.
+    Returns (session_metrics, wellness_entries, spiked_metric_ids_by_injury) --
+    spiked_metric_ids_by_injury maps injury_id -> the SessionMetric ids
+    generated inside that injury's lead-up window (only for specs that
+    have a real injury_id), the ground truth pattern_engine/'s own
+    PRECEDED computation is checked against in tests, since neither reads
+    the other.
     """
-    spike_windows = _spike_windows(injury_leadins)
-    injury_id_by_window_key = {
-        (leadin["athlete_id"], leadin["injury_date"]): leadin["injury_id"]
-        for leadin in injury_leadins
-    }
+    spike_windows = _spike_windows(spike_specs)
+    spec_by_window_key = {(spec["athlete_id"], spec["window_start"]): spec for spec in spike_specs}
 
     metrics: list[dict] = []
-    spiked_ids: dict[str, list[str]] = {leadin["injury_id"]: [] for leadin in injury_leadins}
+    spiked_ids: dict[str, list[str]] = {
+        spec["injury_id"]: [] for spec in spike_specs if spec["injury_id"] is not None
+    }
 
     training_or_match_sessions = [s for s in sessions if s["type"] in SESSION_TYPE_SCALE]
 
@@ -191,15 +234,9 @@ def make_metrics_and_wellness(
             )
 
             if in_spike_window is not None:
-                # Find which injury this window belongs to.
-                for (a_id, injury_date), injury_id in injury_id_by_window_key.items():
-                    if a_id != athlete["id"]:
-                        continue
-                    window_start = injury_date - timedelta(
-                        days=[l["lookback_days"] for l in injury_leadins if l["injury_id"] == injury_id][0]
-                    )
-                    if window_start == in_spike_window[0]:
-                        spiked_ids[injury_id].append(metric_id)
+                spec = spec_by_window_key[(athlete["id"], in_spike_window[0])]
+                if spec["injury_id"] is not None:
+                    spiked_ids[spec["injury_id"]].append(metric_id)
 
     wellness: list[dict] = []
     season_days = SEASON_WEEKS * 7
@@ -240,115 +277,74 @@ def make_metrics_and_wellness(
     return metrics, wellness, spiked_ids
 
 
-def make_injuries_and_treatment_chains(
-    rng: random.Random, athletes: list[dict]
-) -> dict:
-    """Defines the 6 seed injuries and the treatment/rehab/outcome chains
-    attached to 3 of them. Returns all the pieces `seed_data.py` needs,
-    plus `injury_leadins` describing which two are the hamstring pair
-    that `make_metrics_and_wellness` should spike load/wellness for.
-    """
-    a = {athlete["id"]: athlete for athlete in athletes}
+def _side(i: int) -> str:
+    return "right" if i % 2 == 0 else "left"
 
+
+def make_injuries_and_treatment_chains(rng: random.Random, athletes: list[dict]) -> dict:
+    """Defines every seed injury and its treatment/rehab/outcome chain,
+    across the three scenario groups described at the top of this module.
+    Returns all the pieces `seed_data.py` needs, plus `spike_specs`
+    describing which athletes/windows `make_metrics_and_wellness` should
+    spike load/wellness for (real lead-ins and the injury-free echo cohort
+    alike)."""
     physios = [
         {"id": "physio-1", "name": "Dr. Amara Osei"},
         {"id": "physio-2", "name": "Dr. Liam Fitzgerald"},
+        {"id": "physio-3", "name": "Dr. Priya Chandran"},
     ]
 
-    def week_date(week_idx: int, weekday_offset: int) -> date:
-        return SEASON_START + timedelta(weeks=week_idx, days=weekday_offset)
+    injuries: list[dict] = []
+    spike_specs: list[dict] = []
 
-    injuries = [
-        {
-            "id": "injury-athlete1-ankle",
-            "athlete_id": "athlete-1",
-            "type": "ankle sprain",
-            "body_part": "left ankle",
-            "date": week_date(6, 4).isoformat(),  # standalone, no lead-up spike
-            "severity": "minor",
-            "mechanism": "awkward landing during small-sided game",
-        },
-        {
-            "id": "injury-athlete1-hamstring",
-            "athlete_id": "athlete-1",
-            "type": "hamstring strain",
-            "body_part": "left biceps femoris",
-            "date": week_date(22, 5).isoformat(),
-            "severity": "moderate",
-            "mechanism": "sprint deceleration during match",
-        },
-        {
-            "id": "injury-athlete2-hamstring",
-            "athlete_id": "athlete-2",
-            "type": "hamstring strain",
-            "body_part": "right biceps femoris",
-            "date": week_date(27, 5).isoformat(),
-            "severity": "moderate",
-            "mechanism": "sprint deceleration during match",
-        },
-        {
-            "id": "injury-athlete3-ankle",
-            "athlete_id": "athlete-3",
-            "type": "ankle sprain",
-            "body_part": "right ankle",
-            "date": week_date(12, 2).isoformat(),
-            "severity": "minor",
-            "mechanism": "tackle during training",
-        },
-        {
-            "id": "injury-athlete4-groin",
-            "athlete_id": "athlete-4",
-            "type": "groin strain",
-            "body_part": "adductor longus",
-            "date": week_date(30, 2).isoformat(),
-            "severity": "moderate",
-            "mechanism": "change-of-direction during training",
-        },
-        {
-            "id": "injury-athlete5-calf",
-            "athlete_id": "athlete-5",
-            "type": "calf strain",
-            "body_part": "right gastrocnemius",
-            "date": week_date(35, 0).isoformat(),
-            "severity": "minor",
-            "mechanism": "sprint during training",
-        },
-    ]
+    treatments: list[dict] = []
+    rehab_sessions: list[dict] = []
+    outcomes: list[dict] = []
+    edges_administered: list[dict] = []
+    edges_targets: list[dict] = []
+    edges_followed_by: list[dict] = []
+    edges_produced_outcome: list[dict] = []
 
-    # The deliberate hamstring lead-up: 8 days of spiked load/dipped
-    # wellness before each onset. This is what make_metrics_and_wellness
-    # bakes into the data for pattern_engine/ to independently rediscover.
-    injury_leadins = [
-        {
-            "injury_id": "injury-athlete1-hamstring",
-            "athlete_id": "athlete-1",
-            "injury_date": date.fromisoformat(
-                [i["date"] for i in injuries if i["id"] == "injury-athlete1-hamstring"][0]
-            ),
-            "lookback_days": 8,
-        },
-        {
-            "injury_id": "injury-athlete2-hamstring",
-            "athlete_id": "athlete-2",
-            "injury_date": date.fromisoformat(
-                [i["date"] for i in injuries if i["id"] == "injury-athlete2-hamstring"][0]
-            ),
-            "lookback_days": 8,
-        },
-    ]
+    def add_injury(athlete_idx: int, injury_type: str, body_part: str, mechanism: str, week: int, weekday: int, severity: str) -> dict:
+        injury = {
+            "id": f"injury-athlete{athlete_idx + 1}-{injury_type.split()[0]}",
+            "athlete_id": f"athlete-{athlete_idx + 1}",
+            "type": injury_type,
+            "body_part": body_part,
+            "date": week_date(week, weekday).isoformat(),
+            "severity": severity,
+            "mechanism": mechanism,
+        }
+        injuries.append(injury)
+        return injury
 
-    treatments = []
-    rehab_sessions = []
-    outcomes = []
-    edges_administered = []
-    edges_targets = []
-    edges_followed_by = []
-    edges_produced_outcome = []
-
-    def add_treatment_chain(injury_id: str, physio_id: str, outcome_result: str, notes: str):
-        injury = next(i for i in injuries if i["id"] == injury_id)
+    def add_lead_in(athlete_idx: int, injury: dict, lookback_days: int) -> None:
         injury_date = date.fromisoformat(injury["date"])
+        spike_specs.append(
+            {
+                "athlete_id": f"athlete-{athlete_idx + 1}",
+                "window_start": injury_date - timedelta(days=lookback_days),
+                "window_end": injury_date - timedelta(days=1),
+                "injury_id": injury["id"],
+            }
+        )
 
+    def add_treatment_chain(
+        injury: dict,
+        physio_id: str,
+        n_rehab_sessions: int,
+        outcome_result: str | None,
+        notes: str,
+    ) -> None:
+        """A treatment plus a *series* of rehab sessions -- for a resolved
+        case, the series ends in an Outcome (attached to the last session
+        only, per CLAUDE.md's schema: one Outcome per chain). For a still-
+        ongoing case, outcome_result is None and the series just stops at
+        however many sessions have happened so far -- no Outcome node at
+        all, which is exactly what "still in rehab, not resolved yet"
+        means in this graph."""
+        injury_id = injury["id"]
+        injury_date = date.fromisoformat(injury["date"])
         treatment_id = _new_id("treatment")
         treatment_date = injury_date + timedelta(days=1)
         treatments.append(
@@ -365,62 +361,82 @@ def make_injuries_and_treatment_chains(
         edges_administered.append({"physio_id": physio_id, "treatment_id": treatment_id})
         edges_targets.append({"treatment_id": treatment_id, "injury_id": injury_id})
 
-        rehab_id = _new_id("rehab")
-        rehab_date = treatment_date + timedelta(days=3)
-        days_gap = (rehab_date - treatment_date).days
-        rehab_sessions.append(
-            {
-                "id": rehab_id,
-                "treatment_id": treatment_id,
-                "date": rehab_date.isoformat(),
-                "protocol": "graduated loading — eccentric hamstring/adductor program"
-                if "hamstring" in injury["type"] or "groin" in injury["type"]
-                else "graduated loading protocol",
-                "load_prescribed": "60% 1RM, 3x8",
-                "rpe_reported": round(rng.uniform(4.0, 7.0), 1),
-                "completed": True,
-            }
+        protocol = (
+            "graduated loading — eccentric hamstring/adductor program"
+            if "hamstring" in injury["type"] or "groin" in injury["type"]
+            else "graduated loading protocol"
         )
-        edges_followed_by.append({"treatment_id": treatment_id, "rehab_id": rehab_id, "days_gap": days_gap})
 
-        outcome_id = _new_id("outcome")
-        outcome_date = rehab_date + timedelta(days=14 if outcome_result == "clean_return" else 9)
-        outcomes.append(
-            {
-                "id": outcome_id,
-                "rehab_session_id": rehab_id,
-                "result": outcome_result,
-                "date": outcome_date.isoformat(),
-            }
-        )
-        edges_produced_outcome.append({"rehab_id": rehab_id, "outcome_id": outcome_id})
+        last_rehab_id = None
+        last_session_date = treatment_date
+        for session_idx in range(n_rehab_sessions):
+            last_session_date = last_session_date + timedelta(days=int(rng.randint(4, 7)))
+            rehab_id = _new_id("rehab")
+            days_gap = (last_session_date - treatment_date).days
+            progress = (session_idx + 1) / n_rehab_sessions  # 0 < progress <= 1, increasing load across the series
+            sets = 3
+            reps = 6 + round(4 * progress)
+            pct_1rm = round(40 + 40 * progress)
+            rehab_sessions.append(
+                {
+                    "id": rehab_id,
+                    "treatment_id": treatment_id,
+                    "date": last_session_date.isoformat(),
+                    "protocol": protocol,
+                    "load_prescribed": f"{pct_1rm}% 1RM, {sets}x{reps}",
+                    "rpe_reported": round(3.0 + 4.0 * progress + rng.uniform(-0.4, 0.4), 1),
+                    "completed": True,
+                }
+            )
+            edges_followed_by.append({"treatment_id": treatment_id, "rehab_id": rehab_id, "days_gap": days_gap})
+            last_rehab_id = rehab_id
 
-    # athlete-1's hamstring: rushed back, re-aggravated.
-    add_treatment_chain(
-        "injury-athlete1-hamstring",
-        "physio-1",
-        "re_aggravation",
+        if outcome_result is not None:
+            outcome_id = _new_id("outcome")
+            outcome_date = last_session_date + timedelta(days=14 if outcome_result == "clean_return" else 9)
+            outcomes.append(
+                {
+                    "id": outcome_id,
+                    "rehab_session_id": last_rehab_id,
+                    "result": outcome_result,
+                    "date": outcome_date.isoformat(),
+                }
+            )
+            edges_produced_outcome.append({"rehab_id": last_rehab_id, "outcome_id": outcome_id})
+
+    # --- Scenario group 1: the hamstring cluster (athletes 1-5, idx 0-4) ---
+    # Same injury type, same mechanism, same engineered load-spike +
+    # wellness-dip lead-in -- a real cross-athlete cluster for
+    # SIMILAR_PATTERN_TO to find, spanning every outcome this graph can
+    # represent: re-aggravation, clean return (x3), and still-ongoing.
+    hamstring_weeks = [14, 18, 22, 27, 34]
+    hamstring_outcomes = ["re_aggravation", "clean_return", "clean_return", "clean_return", None]
+    hamstring_rehab_counts = [4, 3, 4, 3, 5]
+    hamstring_notes = [
         "Return-to-play criteria met on strength testing but sprint mechanics not "
         "reassessed before full training resumed.",
-    )
-    # athlete-2's hamstring: same injury type/mechanism, clean return this time.
-    add_treatment_chain(
-        "injury-athlete2-hamstring",
-        "physio-2",
-        "clean_return",
         "Full graduated return-to-sprint protocol completed before training resumed.",
-    )
-    # athlete-4's groin: unrelated pattern, clean return.
-    add_treatment_chain(
-        "injury-athlete4-groin",
-        "physio-1",
-        "clean_return",
-        "Adductor strength restored to within 10% of contralateral limb before clearance.",
-    )
+        "Eccentric strength restored to within 5% of contralateral limb before clearance.",
+        "Graduated return-to-sprint protocol completed; no recurrence at 4-week follow-up.",
+        "Early-stage loading progressing on schedule; sprint mechanics reassessment "
+        "planned before any return-to-sprint work begins.",
+    ]
+    for idx, (week, outcome, n_sessions, notes) in enumerate(
+        zip(hamstring_weeks, hamstring_outcomes, hamstring_rehab_counts, hamstring_notes)
+    ):
+        injury = add_injury(
+            idx,
+            "hamstring strain",
+            f"{_side(idx)} biceps femoris",
+            "sprint deceleration during match",
+            week,
+            5,
+            "moderate",
+        )
+        add_lead_in(idx, injury, lookback_days=8)
+        physio_id = physios[idx % len(physios)]["id"]
+        add_treatment_chain(injury, physio_id, n_sessions, outcome, notes)
 
-    # Note: tags are flattened to top-level properties (body_part, severity,
-    # assessment) rather than a nested map, since graph node properties
-    # can't hold nested maps — only primitives and arrays of primitives.
     clinical_notes = [
         {
             "id": _new_id("note"),
@@ -440,13 +456,105 @@ def make_injuries_and_treatment_chains(
             "severity": "moderate",
             "assessment": "grade 2 strain",
         },
+        {
+            "id": _new_id("note"),
+            "injury_id": "injury-athlete5-hamstring",
+            "text": "Third squad case this season with the same lead-in signature. Squad-wide "
+            "load review requested for the winger/fullback rotation group.",
+            "body_part": "hamstring",
+            "severity": "moderate",
+            "assessment": "grade 2 strain, early-stage rehab",
+        },
     ]
+
+    # --- Scenario group 2: 8 more "injured and returned" athletes
+    # (idx 5-12), varied injury types, no engineered lead-in -- an
+    # ordinary, unremarkable-in-hindsight injury, same as the non-
+    # hamstring injuries in earlier versions of this dataset. ---
+    other_returned_weeks = [10, 13, 16, 19, 24, 29, 31, 36]
+    other_returned_outcomes = [
+        "clean_return", "clean_return", "re_aggravation", "clean_return",
+        "clean_return", "clean_return", "re_aggravation", "clean_return",
+    ]
+    for offset, week in enumerate(other_returned_weeks):
+        idx = 5 + offset
+        injury_type, body_part_tpl, mechanism = INJURY_CATALOG[offset % len(INJURY_CATALOG)]
+        injury = add_injury(
+            idx, injury_type, body_part_tpl.format(side=_side(idx)), mechanism, week, 2, "minor" if offset % 3 else "moderate"
+        )
+        outcome = other_returned_outcomes[offset]
+        notes = (
+            "Return-to-play criteria met on strength/movement testing before clearance."
+            if outcome == "clean_return"
+            else "Cleared on strength testing but symptoms recurred within the first full "
+            "training week back."
+        )
+        physio_id = physios[idx % len(physios)]["id"]
+        add_treatment_chain(injury, physio_id, n_rehab_sessions=int(rng.choice([3, 4])), outcome_result=outcome, notes=notes)
+
+    # --- Scenario group 3: 5 more "still injured, ongoing rehab" athletes
+    # (idx 13-17), onset late enough in the season that a several-session
+    # program lands right up near the most recent generated data -- reads
+    # as "in progress right now," not a stale, abandoned record.
+    #
+    # Staggered at different points in the treatment pipeline, not all
+    # identically "mid-program" -- this is also what keeps GET
+    # /injuries/open, /treatments/open and /rehab-sessions/open (the
+    # dropdowns behind the README's "log a treatment" walkthrough)
+    # non-empty: idx13 is freshly sustained and not yet seen by a physio at
+    # all, idx14 has been assessed but rehab hasn't started, idx15-17 are
+    # at increasing points into an active program. ---
+    still_injured = [
+        # (week, n_rehab_sessions or None for "no treatment logged yet")
+        (38, None),  # freshly sustained, awaiting assessment
+        (30, 0),  # assessed, rehab not started yet
+        (31, 1),  # just begun
+        (32, 3),  # early-mid program
+        (33, 5),  # well into the program
+    ]
+    for offset, (week, n_sessions) in enumerate(still_injured):
+        idx = 13 + offset
+        injury_type, body_part_tpl, mechanism = INJURY_CATALOG[offset % len(INJURY_CATALOG)]
+        injury = add_injury(idx, injury_type, body_part_tpl.format(side=_side(idx)), mechanism, week, 0, "moderate")
+        if n_sessions is None:
+            continue  # not yet treated -- no Treatment node at all
+        physio_id = physios[idx % len(physios)]["id"]
+        add_treatment_chain(
+            injury,
+            physio_id,
+            n_rehab_sessions=n_sessions,
+            outcome_result=None,
+            notes="Graduated loading in progress; next reassessment scheduled before any "
+            "return-to-sprint work begins.",
+        )
+
+    # --- Scenario group 4: injury-free (idx 18-29). Five of these (18, 20,
+    # 22, 24, 26) get the same load-spike + wellness-dip signature as the
+    # hamstring cluster in the final ~12 days of the season, with no
+    # injury following -- "currently fine, but showing the same pattern
+    # that led to a hamstring strain elsewhere in the squad." This is what
+    # the flagging agent's default (no --as-of override) run is meant to
+    # catch: a real echo landing inside every athlete's own most-recent
+    # rolling window, not a fixed calendar date rewound into the past. ---
+    season_days = SEASON_WEEKS * 7
+    echo_window_start = SEASON_START + timedelta(days=season_days - 12)
+    echo_window_end = SEASON_START + timedelta(days=season_days - 1)
+    for idx in (18, 20, 22, 24, 26):
+        spike_specs.append(
+            {
+                "athlete_id": f"athlete-{idx + 1}",
+                "window_start": echo_window_start,
+                "window_end": echo_window_end,
+                "injury_id": None,
+            }
+        )
+
     edges_has_note = [{"injury_id": n["injury_id"], "note_id": n["id"]} for n in clinical_notes]
 
     return {
         "physios": physios,
         "injuries": injuries,
-        "injury_leadins": injury_leadins,
+        "spike_specs": spike_specs,
         "treatments": treatments,
         "rehab_sessions": rehab_sessions,
         "outcomes": outcomes,
@@ -468,13 +576,13 @@ def generate_all() -> dict:
     faker = Faker()
     Faker.seed(SEED)
 
-    athletes = make_athletes(rng, np_rng, faker)
+    athletes = make_athletes(np_rng, faker)
     sessions = make_sessions()
 
     injury_data = make_injuries_and_treatment_chains(rng, athletes)
 
     session_metrics, wellness_entries, spiked_metric_ids = make_metrics_and_wellness(
-        np_rng, athletes, sessions, injury_data["injury_leadins"]
+        np_rng, athletes, sessions, injury_data["spike_specs"]
     )
 
     edges_participated_in = [
