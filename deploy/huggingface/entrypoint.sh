@@ -82,20 +82,41 @@ for i in range(60):
         time.sleep(2)
 "
 
-echo "Seeding demo data..."
-python seed/seed_data.py
+# Seeding runs in the background, concurrently with the app starting
+# below, instead of blocking it -- the 30-player dataset (~25k node/edge
+# writes plus a per-athlete flagging pass) is real CPU work, and Render's
+# free tier is 0.1 vCPU: roughly 10% of one core. A step that costs, say,
+# 60s of actual CPU time costs ~10 minutes of wall clock at that
+# throttling -- long enough that Render's own port scan gives up and
+# fails the deploy before the app ever gets a chance to start, which is
+# exactly what happened blocking on this sequentially. Backing it off
+# means Render's port scan succeeds within seconds of Memgraph coming up,
+# same as it always did -- a visitor hitting the demo in the first minute
+# or two after a cold start may see an empty or still-filling-in graph
+# until this finishes, the same "give it a moment" tradeoff as the free
+# tier's own cold-start delay banner. set -e doesn't propagate out of a
+# backgrounded subshell, so a seeding failure here can't take the app
+# down with it -- it'll just show up in the logs and the demo stays
+# empty, which is the right degradation for a background job, not a
+# silent one: every step still echoes what it's doing.
+(
+    echo "Seeding demo data..."
+    python seed/seed_data.py
 
-echo "Running the pattern engine..."
-python pattern_engine/run_pattern_engine.py
+    echo "Running the pattern engine..."
+    python pattern_engine/run_pattern_engine.py
 
-# No --as-of needed: seed/generators.py plants a load-spike + wellness-dip
-# echo (same signature as the hamstring cluster) in the final ~12 days of
-# every athlete's own generated data, so the default per-athlete reference
-# date (their own latest data + 1 day) already lands inside it -- a
-# visitor gets real Flags without the demo relying on a hand-picked
-# calendar date.
-echo "Running the flagging agent..."
-python flagging_agent/run_flagging_agent.py
+    # No --as-of needed: seed/generators.py plants a load-spike +
+    # wellness-dip echo (same signature as the hamstring cluster) in the
+    # final ~12 days of every athlete's own generated data, so the
+    # default per-athlete reference date (their own latest data + 1 day)
+    # already lands inside it -- a visitor gets real Flags without the
+    # demo relying on a hand-picked calendar date.
+    echo "Running the flagging agent..."
+    python flagging_agent/run_flagging_agent.py
+
+    echo "Demo data ready."
+) &
 
 echo "Starting the app on port ${PORT}..."
 exec uvicorn api.app:app --host 0.0.0.0 --port "${PORT}"
