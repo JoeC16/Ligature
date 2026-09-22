@@ -49,25 +49,34 @@ uses for the memory-constrained free-tier deploy).
 That's it — the Space builds, and in a few minutes you have a public URL at
 `https://huggingface.co/spaces/<your-username>/<space-name>`.
 
-## What happens on every container start
+## What happens at build time vs. every container start
 
-`deploy/huggingface/entrypoint.sh` starts Memgraph, waits for it to accept
-connections, then starts the app and re-seeds the demo graph from scratch
-(`seed/seed_data.py` → `pattern_engine/run_pattern_engine.py` →
-`flagging_agent/run_flagging_agent.py`, no `--as-of` override needed — the
-seed data plants its flagging-echo cohort at the end of the generated
-season, so the agent's default per-athlete reference date already
-produces real `Flag`s to click on) **concurrently**, not seed-then-serve —
-the 30-player dataset is real CPU work (~25k node/edge writes plus a
-per-athlete flagging pass), and a free instance's fraction of a CPU core
-made blocking on it long enough that the host's own health check gave up
-and failed the deploy before the app ever got a chance to start. A
-visitor hitting the Space in the first minute or so after a cold start
-may see an empty or still-filling-in graph — refresh once seeding
-catches up. This is deliberate, not a workaround: a free
-Space's disk is ephemeral, and this repo's seed data is fully synthetic
-and deterministic (`generators.SEED`), so re-seeding on boot just means
-every visitor sees the same known-good demo graph regardless of when the
+The full synthetic-season pipeline (`seed/seed_data.py` →
+`pattern_engine/run_pattern_engine.py` → `flagging_agent/run_flagging_agent.py`,
+no `--as-of` override needed — the seed data plants its flagging-echo
+cohort at the end of the generated season, so the agent's default
+per-athlete reference date already produces real `Flag`s to click on)
+runs **once, at `docker build` time** (`deploy/huggingface/build_seed.sh`),
+against a throwaway Memgraph instance, and the result is written to a
+Memgraph snapshot baked into the image. That used to run on every
+container *boot* instead — real CPU work (~25k node/edge writes plus a
+per-athlete flagging pass) that a free instance's 0.1 vCPU either
+couldn't finish before the host's own health check gave up and failed the
+deploy outright, or (once backgrounded to dodge that) left a visitor
+looking at an empty, still-filling-in graph for the first minute or two
+of every cold start. Moving it to build time means the CPU-heavy part
+isn't racing a health-check timeout anymore — a slower `docker build` is
+a fine trade for a deploy that comes up complete.
+
+`deploy/huggingface/entrypoint.sh` now just restores that baked snapshot
+into Memgraph's real data directory, starts Memgraph (which recovers it
+in seconds, not the minutes the original synthesis took), waits for it to
+accept connections, and only then starts the app — so the graph is
+already fully populated by the time it answers its first request. This
+is deliberate, not a workaround: a free Space's disk is ephemeral, and
+the baked snapshot is fully synthetic and deterministic
+(`generators.SEED`), so restoring it on every boot just means every
+visitor sees the same known-good demo graph regardless of when the
 container last restarted. **Don't use this Space to log real data** —
 anything written through the API (a real treatment, a resolved flag) is
 gone on the next restart, and free Spaces do restart on their own
@@ -75,12 +84,14 @@ gone on the next restart, and free Spaces do restart on their own
 
 ## What to expect
 
-- **Cold start is slower than a typical Space**, though less so than
-  the previous Neo4j-bundled version of this deploy — Free-tier Spaces
-  sleep after ~15-30 minutes of no traffic, and this one still has to
-  boot the database and re-seed before the app answers a single request,
-  but Memgraph starts much faster than a JVM database. Once warm, it
-  behaves like any local run.
+- **Build is slower than a typical Space** — `docker build` now includes
+  generating the full synthetic season and running the pattern engine
+  and flagging agent against it once, before the image is even pushed.
+  **Cold start itself is fast**: Free-tier Spaces sleep after ~15-30
+  minutes of no traffic, and waking back up only costs restoring a
+  pre-built snapshot and booting Memgraph (seconds, not the minutes the
+  original from-scratch re-seed took) before the app answers a request.
+  Once warm, it behaves like any local run.
 - **No database password to manage.** Memgraph's community build doesn't
   enforce authentication at all — the `GRAPH_DB_USER`/`GRAPH_DB_PASSWORD`
   env vars in the `Dockerfile` are unused placeholders, kept only because
@@ -98,8 +109,8 @@ through three env vars (`GRAPH_DB_URI` / `GRAPH_DB_USER` /
 that's this bundled container's Memgraph or a larger standalone instance
 a thousand miles away. To move to a bigger Memgraph deployment later
 (more memory than a free tier's ~512MB, its own persistent volume
-instead of this deploy's deliberate re-seed-every-boot ephemeral
-storage):
+instead of this deploy's deliberate restore-the-baked-snapshot-every-boot
+ephemeral storage):
 
 1. Stand up Memgraph wherever you want it to actually live.
 2. Point those three env vars at it (as Space secrets, or in whatever

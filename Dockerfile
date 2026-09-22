@@ -46,7 +46,7 @@ RUN python3 -m venv /venv \
 ENV PATH="/venv/bin:${PATH}"
 
 COPY . .
-RUN chmod +x deploy/huggingface/entrypoint.sh
+RUN chmod +x deploy/huggingface/entrypoint.sh deploy/huggingface/build_seed.sh
 
 # Memgraph's community build has no authentication layer at all, so
 # GRAPH_DB_USER/PASSWORD below are unused placeholders kept only because
@@ -57,19 +57,36 @@ ENV GRAPH_DB_PASSWORD=unused
 ENV GRAPH_DB_URI=bolt://localhost:7687
 ENV PORT=7860
 
+# /app/seed-snapshot (deliberately NOT under /var/lib/memgraph, the path
+# the base image declares as a VOLUME — see the USER note below) holds
+# the demo graph build_seed.sh bakes in below. Created + chowned here,
+# as root, because the COPY above left /app itself root-owned; the
+# `memgraph` user that build_seed.sh actually runs as needs write access
+# to create a data directory inside it.
+RUN mkdir -p /app/seed-snapshot && chown memgraph:memgraph /app/seed-snapshot
+
 # Drop back to the base image's non-root `memgraph` user for everything that
-# actually runs (bash entrypoint, memgraph itself, the seed/pattern-engine/
-# flagging-agent scripts, uvicorn). The base image's own Dockerfiles follow
-# this exact pattern -- root only for privileged build steps (apt-get
-# above), switched back before anything runs -- because the VOLUME this
-# image declares at /var/lib/memgraph is pre-owned by `memgraph`, and the
-# memgraph binary refuses to start under any other UID:
+# actually runs (build_seed.sh below, the entrypoint, memgraph itself,
+# uvicorn). The base image's own Dockerfiles follow this exact pattern --
+# root only for privileged build steps (apt-get above), switched back
+# before anything runs -- because the VOLUME this image declares at
+# /var/lib/memgraph is pre-owned by `memgraph`, and the memgraph binary
+# refuses to start under any other UID:
 #   "The process is running as user root, but '/var/lib/memgraph' is owned
 #   by user memgraph. Please start the process as user memgraph!"
-# Nothing running after this line writes anywhere outside that volume --
-# /app and /venv only need to be read + executed, which COPY's and the venv
-# build's default (world-readable/executable) permissions already allow.
+# Nothing running after this line writes anywhere outside /app/seed-snapshot
+# (see build_seed.sh) and that volume -- /app and /venv only need to be
+# read + executed, which COPY's and the venv build's default
+# (world-readable/executable) permissions already allow.
 USER memgraph
+
+# Generates the full synthetic season, runs the pattern engine and
+# flagging agent against it, and snapshots the result to
+# /app/seed-snapshot -- once, now, as part of the image -- instead of
+# leaving that CPU-heavy pipeline to run on every container boot. See
+# build_seed.sh for the full rationale and entrypoint.sh for how the
+# baked snapshot gets restored at runtime.
+RUN deploy/huggingface/build_seed.sh
 
 EXPOSE 7860
 

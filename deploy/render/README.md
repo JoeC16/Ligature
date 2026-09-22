@@ -31,7 +31,12 @@ password to manage at all, so there's nothing left to mismatch or reset.
    - `ANTHROPIC_API_KEY` = your real key (optional — without it,
      everything works except the ask-in-English box, which errors on
      submit)
-6. Create the service. First build takes a few minutes.
+6. Create the service. First build takes a few minutes — longer than a
+   typical Docker service, since the build now also generates the full
+   synthetic season and runs the pattern engine + flagging agent against
+   it once, baking the result into the image (see "What happens at build
+   time vs. every container start" in `deploy/huggingface/README.md` for
+   why). That cost is paid once per build, not on every deploy restart.
 
 Your app is live at `https://<service-name>.onrender.com`.
 
@@ -40,9 +45,11 @@ Your app is live at `https://<service-name>.onrender.com`.
 - **750 free instance-hours/month**, pooled across whatever free services
   you run in your Render account.
 - **Cold start after inactivity** — free services sleep after ~15 minutes
-  idle. Expect something closer to Render's normal ~1 minute wake time
-  than the earlier Neo4j-bundled version's 60-90 seconds, since Memgraph
-  starts far faster than a JVM database does.
+  idle. Waking back up is fast: the container restores a pre-built
+  Memgraph snapshot (baked into the image at build time — see
+  `deploy/huggingface/README.md`) rather than regenerating the demo graph
+  from scratch, so the graph is already fully populated by the time the
+  app answers its first request.
 - **Auto-redeploys on every push to `main`** — a Render default.
 - **No database password to manage.** Memgraph's community build (what
   the Dockerfile uses, and what `docker-compose.yml` runs for local dev
@@ -61,8 +68,8 @@ The app only ever talks to its graph database through three env vars
 `common/db.py`) — it has no idea whether that's this bundled container's
 Memgraph or a larger standalone instance elsewhere. Moving to a bigger
 Memgraph deployment later (more memory than a free tier's ~512MB, its
-own persistent volume instead of this deploy's deliberate re-seed-every-
-boot ephemeral storage) is:
+own persistent volume instead of this deploy's deliberate
+restore-the-baked-snapshot-every-boot ephemeral storage) is:
 
 1. Stand up Memgraph wherever you want it to actually live.
 2. Point those three env vars at it.
