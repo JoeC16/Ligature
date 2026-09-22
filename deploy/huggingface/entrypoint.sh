@@ -20,13 +20,33 @@ set -euo pipefail
 # off-heap Netty buffers to budget for), so this is a generous cap for a
 # few hundred demo nodes/edges, not a tight squeeze the way Neo4j's heap
 # tuning was on the previous version of this file.
+#
+# --bolt-address / --monitoring-address / --metrics-address all pinned to
+# 127.0.0.1: Memgraph binds all three to 0.0.0.0 by default (confirmed
+# against a real deploy -- Render's own port scan logged "Detected service
+# running on port ${PORT} with additional ports HTTP:7444, HTTP:9091,
+# TCP:7687"), so all four ports in this container were externally
+# reachable and ambiguous to Render's router. 7444 is Memgraph's
+# monitoring log channel over WebSocket; a plain page load landing on it
+# instead of the app is exactly the shape of the "WebSocket handshake
+# Connection field is missing" error seen in production. 9091 is a
+# Prometheus metrics endpoint we don't use. 7687 is Bolt itself -- with
+# Memgraph's community build having no authentication layer at all, that
+# one was a genuinely unauthenticated database reachable from the public
+# internet, not just a routing ambiguity. localhost is all this
+# entrypoint's own driver connection (below) or the app needs -- nothing
+# external should ever talk to Memgraph directly in this bundled deploy.
 echo "Starting Memgraph..."
 # The binary isn't on PATH in this image -- confirmed from Memgraph's own
 # Dockerfile source (memgraph/memgraph's release/docker/v6_deb.dockerfile
 # sets ENTRYPOINT ["/usr/lib/memgraph/memgraph"], not a PATH entry). A
 # bare `memgraph &` here silently backgrounds a "command not found" no-op,
 # which is why the wait loop below timed out on a real deploy.
-/usr/lib/memgraph/memgraph --memory-limit=250 &
+/usr/lib/memgraph/memgraph \
+    --memory-limit=250 \
+    --bolt-address=127.0.0.1 \
+    --monitoring-address=127.0.0.1 \
+    --metrics-address=127.0.0.1 &
 
 echo "Waiting for Memgraph to accept connections..."
 python3 -c "
