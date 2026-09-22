@@ -57,6 +57,20 @@ ENV GRAPH_DB_PASSWORD=unused
 ENV GRAPH_DB_URI=bolt://localhost:7687
 ENV PORT=7860
 
+# Drop back to the base image's non-root `memgraph` user for everything that
+# actually runs (bash entrypoint, memgraph itself, the seed/pattern-engine/
+# flagging-agent scripts, uvicorn). The base image's own Dockerfiles follow
+# this exact pattern -- root only for privileged build steps (apt-get
+# above), switched back before anything runs -- because the VOLUME this
+# image declares at /var/lib/memgraph is pre-owned by `memgraph`, and the
+# memgraph binary refuses to start under any other UID:
+#   "The process is running as user root, but '/var/lib/memgraph' is owned
+#   by user memgraph. Please start the process as user memgraph!"
+# Nothing running after this line writes anywhere outside that volume --
+# /app and /venv only need to be read + executed, which COPY's and the venv
+# build's default (world-readable/executable) permissions already allow.
+USER memgraph
+
 EXPOSE 7860
 
 ENTRYPOINT ["deploy/huggingface/entrypoint.sh"]
