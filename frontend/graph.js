@@ -17,21 +17,43 @@ const DAMPING = 0.82;
 const CLICK_DRAG_THRESHOLD = 5; // px of pointer travel before a press counts as a drag, not a tap
 const SLEEP_ENERGY = 0.02;
 const SLEEP_FRAMES = 40;
+const MIN_SCALE = 0.25;
+const MAX_SCALE = 3;
 
+// Primary types (Athlete, Injury, Flag) carry a bold shape and a
+// persistent canvas label. Secondary/detail types share one small-dot
+// shape and get NO persistent label — only a hover tooltip and the detail
+// panel on click — so the canvas never turns into a wall of ids like
+// `metric-0045`. Legend, not shape, does the identification work for
+// these (design system: "keeps the canvas from turning into a shape zoo").
 const TYPE_STYLE = {
-  Athlete: { shape: "circle", fill: "var(--athlete)", r: 16 },
-  Injury: { shape: "diamond", fill: "var(--injury)", r: 15 },
-  Flag: { shape: "triangle", fill: "var(--flag)", r: 14 },
-  SessionMetric: { shape: "square", fill: "var(--injury-fill)", r: 8 },
-  WellnessEntry: { shape: "square", fill: "var(--wellness)", r: 8 },
-  Treatment: { shape: "square", fill: "var(--physio)", r: 11 },
-  Physio: { shape: "circle", fill: "var(--physio)", r: 10 },
-  RehabSession: { shape: "square", fill: "var(--physio-fill)", r: 10 },
-  Outcome: { shape: "circle", fill: "var(--clean)", r: 10 },
-  ClinicalNote: { shape: "square", fill: "var(--mist-strong)", r: 8 },
-  Cluster: { shape: "triangle", fill: "var(--signal)", r: 12 },
+  Athlete: { tier: "primary", shape: "circle", stroke: "var(--athlete)", fill: "var(--athlete-fill)", r: 20 },
+  Injury: { tier: "primary", shape: "diamond", stroke: "var(--injury)", fill: "var(--injury-fill)", r: 20 },
+  Flag: { tier: "primary", shape: "triangle", stroke: "var(--flag)", fill: "var(--flag-fill)", r: 20, halo: true },
+  Treatment: { tier: "secondary", shape: "circle", stroke: "var(--treatment)", fill: "var(--treatment-fill)", r: 9 },
+  Physio: { tier: "secondary", shape: "circle", stroke: "var(--treatment)", fill: "var(--treatment-fill)", r: 9 },
+  RehabSession: { tier: "secondary", shape: "circle", stroke: "var(--treatment)", fill: "var(--treatment-fill)", r: 9 },
+  WellnessEntry: { tier: "secondary", shape: "circle", stroke: "var(--wellness)", fill: "var(--wellness-fill)", r: 9 },
+  Outcome: { tier: "secondary", shape: "circle", stroke: "var(--outcome)", fill: "var(--outcome-fill)", r: 9 },
+  SessionMetric: { tier: "secondary", shape: "circle", stroke: "var(--metric)", fill: "var(--metric-fill)", r: 9 },
 };
-const DEFAULT_STYLE = { shape: "circle", fill: "var(--ink-muted)", r: 9 };
+const DEFAULT_STYLE = { tier: "secondary", shape: "circle", stroke: "var(--metric)", fill: "var(--metric-fill)", r: 9 };
+
+// Primary-type labels: Athlete is "who" (sans, bold, prominent). Injury
+// and Flag are "what happened" (mono, quieter) -- the type scale's own
+// rule that mono is reserved for anything that IS data, applied to the
+// one place on the canvas where that distinction matters most.
+const LABEL_STYLE = {
+  Athlete: "sans",
+  Injury: "mono",
+  Flag: "mono",
+};
+
+// Edge types worth a confidence/label chip on the canvas -- the small set
+// this product actually differentiates on (cross-athlete pattern matches),
+// not every relationship, which would just recreate the clutter this
+// design pass exists to remove.
+const LABELED_EDGE_TYPES = new Set(["SIMILAR_PATTERN_TO", "MATCHES"]);
 
 function styleFor(label) {
   return TYPE_STYLE[label] || DEFAULT_STYLE;
@@ -52,8 +74,14 @@ function shapeElement(shape, r) {
     return el;
   }
   if (shape === "diamond") {
-    const el = document.createElementNS(SVG_NS, "polygon");
-    el.setAttribute("points", `0,${-r} ${r},0 0,${r} ${-r},0`);
+    const el = document.createElementNS(SVG_NS, "rect");
+    const side = r * 1.4;
+    el.setAttribute("x", -side / 2);
+    el.setAttribute("y", -side / 2);
+    el.setAttribute("width", side);
+    el.setAttribute("height", side);
+    el.setAttribute("rx", 3);
+    el.setAttribute("transform", "rotate(45)");
     return el;
   }
   // triangle
@@ -62,11 +90,34 @@ function shapeElement(shape, r) {
   return el;
 }
 
+function truncateLabel(s, max = 22) {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+function humanizeEnum(value) {
+  const s = String(value).replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function nodeDisplayName(node) {
+  const p = node.properties || {};
+  // display_name: computed server-side for the two labels (Flag,
+  // SessionMetric) whose own properties have nothing readable on them --
+  // see api/graph.py's _enrich_display_names. Everything else already
+  // carries a usable property directly.
+  if (p.display_name) return p.display_name;
+  if (p.name) return p.name;
+  if (p.type) return p.type;
+  if (p.protocol) return p.protocol;
+  if (p.result) return humanizeEnum(p.result); // Outcome: "clean_return" -> "Clean return"
+  return node.id;
+}
+
 export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick } = {}) {
   const nodes = new Map(); // id -> {id,label,properties,x,y,vx,vy,fx,fy}
   const edges = new Map(); // id -> {id,type,from,to,properties}
-  const nodeEls = new Map(); // id -> {group, shape}
-  const edgeEls = new Map(); // id -> {line, hit}
+  const nodeEls = new Map(); // id -> {group, shape, label}
+  const edgeEls = new Map(); // id -> {line, hit, labelGroup}
 
   const viewport = document.createElementNS(SVG_NS, "g");
   const edgeLayer = document.createElementNS(SVG_NS, "g");
@@ -99,6 +150,26 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
       x: (sx - transform.x) / transform.scale,
       y: (sy - transform.y) / transform.scale,
     };
+  }
+
+  function zoomAtPoint(px, py, factor) {
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, transform.scale * factor));
+    const graphX = (px - transform.x) / transform.scale;
+    const graphY = (py - transform.y) / transform.scale;
+    transform.scale = newScale;
+    transform.x = px - graphX * newScale;
+    transform.y = py - graphY * newScale;
+    applyTransform();
+  }
+
+  function zoomAtCenter(factor) {
+    const { width, height } = clientSize();
+    zoomAtPoint(width / 2, height / 2, factor);
+  }
+
+  function resetView() {
+    transform = { x: 0, y: 0, scale: 1 };
+    applyTransform();
   }
 
   // --- Simulation ---
@@ -204,6 +275,9 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
       els.hit.setAttribute("y1", a.y);
       els.hit.setAttribute("x2", b.x);
       els.hit.setAttribute("y2", b.y);
+      if (els.labelGroup) {
+        els.labelGroup.setAttribute("transform", `translate(${(a.x + b.x) / 2},${(a.y + b.y) / 2})`);
+      }
     }
   }
 
@@ -253,27 +327,52 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("data-id", node.id);
     group.setAttribute("data-label", node.label);
+
+    // Flag halo: calm static rings behind the shape, not a pulsing/red
+    // alert -- a Flag means "this matches a prior pattern," never
+    // "something is wrong right now."
+    if (style.halo) {
+      const outer = document.createElementNS(SVG_NS, "circle");
+      outer.setAttribute("class", "flag-halo outer");
+      outer.setAttribute("r", style.r + 14);
+      group.appendChild(outer);
+      const inner = document.createElementNS(SVG_NS, "circle");
+      inner.setAttribute("class", "flag-halo inner");
+      inner.setAttribute("r", style.r + 4);
+      group.appendChild(inner);
+    }
+
     const shape = shapeElement(style.shape, style.r);
-    // node-enter: a one-shot appear animation, safe to leave on permanently
-    // since ensureNode only reaches this branch once per id. node-pulse:
-    // Flag nodes get a continuous soft glow -- they're literally the
-    // "look here" node type (CLAUDE.md's flagging agent output), so drawing
-    // the eye to one is surfacing evidence, not the graph making a call.
-    const pulse = node.label === "Flag" ? " node-pulse" : "";
-    shape.setAttribute("class", `node-shape node-enter${pulse}`);
+    const tierClass = style.tier === "primary" ? "" : " secondary";
+    // node-enter: a one-shot appear animation, safe to leave on
+    // permanently since ensureNode only reaches this branch once per id.
+    shape.setAttribute("class", `node-shape node-enter${tierClass}`);
     shape.setAttribute("fill", style.fill);
+    shape.setAttribute("stroke", style.stroke);
+    shape.style.color = style.stroke; // for .highlighted's drop-shadow(currentColor)
     group.appendChild(shape);
 
-    const label = document.createElementNS(SVG_NS, "text");
-    label.setAttribute("class", "node-label");
-    label.setAttribute("text-anchor", "middle");
-    label.setAttribute("y", style.r + 12);
-    label.textContent = nodeDisplayName(node);
-    group.appendChild(label);
+    const fullName = nodeDisplayName(node);
+    if (style.tier === "primary") {
+      const labelStyle = LABEL_STYLE[node.label] || "mono";
+      const label = document.createElementNS(SVG_NS, "text");
+      label.setAttribute("class", `node-label${labelStyle === "mono" ? " secondary" : ""}`);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("y", style.r + 14);
+      label.textContent = truncateLabel(fullName);
+      group.appendChild(label);
+      nodeEls.set(node.id, { group, shape, label });
+    } else {
+      nodeEls.set(node.id, { group, shape, label: null });
+    }
+
+    // Secondary nodes carry no persistent label -- a hover tooltip (and
+    // the detail panel on click) is the full text either way.
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = fullName;
+    group.appendChild(title);
 
     nodeLayer.appendChild(group);
-    nodeEls.set(node.id, { group, shape });
-
     attachNodeInteraction(entry, group);
     return entry;
   }
@@ -300,12 +399,29 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
       if (onEdgeClick) onEdgeClick(edge);
     });
 
-    edgeEls.set(edge.id, { line, hit });
-  }
+    let labelGroup = null;
+    if (LABELED_EDGE_TYPES.has(edge.type)) {
+      const confidence = edge.properties?.confidence;
+      const text = confidence != null ? `${Math.round(confidence * 100)}%` : edge.type;
+      labelGroup = document.createElementNS(SVG_NS, "g");
+      labelGroup.setAttribute("class", `edge-label ${edge.type}`);
+      const width = Math.max(28, text.length * 6.5 + 12);
+      const rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("x", -width / 2);
+      rect.setAttribute("y", -8);
+      rect.setAttribute("width", width);
+      rect.setAttribute("height", 16);
+      rect.setAttribute("rx", 4);
+      labelGroup.appendChild(rect);
+      const text_ = document.createElementNS(SVG_NS, "text");
+      text_.setAttribute("text-anchor", "middle");
+      text_.setAttribute("y", 3);
+      text_.textContent = text;
+      labelGroup.appendChild(text_);
+      edgeLayer.appendChild(labelGroup);
+    }
 
-  function nodeDisplayName(node) {
-    const p = node.properties || {};
-    return p.name || p.type || p.protocol || p.result || node.id;
+    edgeEls.set(edge.id, { line, hit, labelGroup });
   }
 
   // --- Node drag / tap ---
@@ -399,13 +515,7 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
       const px = ev.clientX - rect.left;
       const py = ev.clientY - rect.top;
       const factor = Math.exp(-ev.deltaY * 0.001);
-      const newScale = Math.min(3, Math.max(0.25, transform.scale * factor));
-      const graphX = (px - transform.x) / transform.scale;
-      const graphY = (py - transform.y) / transform.scale;
-      transform.scale = newScale;
-      transform.x = px - graphX * newScale;
-      transform.y = py - graphY * newScale;
-      applyTransform();
+      zoomAtPoint(px, py, factor);
     },
     { passive: false }
   );
@@ -421,7 +531,9 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
   function highlight(ids) {
     highlighted = new Set(ids);
     for (const [id, els] of nodeEls) {
-      els.shape.classList.toggle("highlighted", highlighted.has(id));
+      const on = highlighted.has(id);
+      els.shape.classList.toggle("highlighted", on);
+      if (els.label) els.label.classList.toggle("highlighted", on);
     }
   }
 
@@ -429,9 +541,27 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     return nodes.has(id);
   }
 
+  function getNode(id) {
+    return nodes.get(id);
+  }
+
+  function edgesForNode(id) {
+    return [...edges.values()].filter((e) => e.from === id || e.to === id);
+  }
+
   function nodeCount() {
     return nodes.size;
   }
 
-  return { merge, highlight, hasNode, nodeCount };
+  return {
+    merge,
+    highlight,
+    hasNode,
+    getNode,
+    edgesForNode,
+    nodeCount,
+    zoomIn: () => zoomAtCenter(1.25),
+    zoomOut: () => zoomAtCenter(0.8),
+    resetView,
+  };
 }

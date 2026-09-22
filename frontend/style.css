@@ -1,111 +1,129 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 :root {
-  --paper: #f6f4f0;
-  --paper-raised: #ffffff;
-  --ink: #1b1e1f;
-  --ink-secondary: #4c5155;
-  --ink-muted: #82878b;
-  --mist: #e1ddd5;
-  --mist-strong: #c7c0b4;
-  --pitch: #14261f;
-  --pitch-ink: #eef4ef;
+  /* Theme base — warm neutrals, desaturated on purpose (see Node type
+     colors below): nothing in this palette should read as urgent at a
+     glance except where a clinician chooses to look closer. */
+  --bg: #f6f3ec;
+  --surface: #ffffff;
+  --canvas: #efeae0;
+  --ink: #1b1812;
+  --ink-muted: #6e6656;
+  --ink-faint: #9a927e;
+  --border: #ded6c4;
+  --border-strong: #c7bca2;
 
-  --athlete: #3a5a8c;
-  --athlete-fill: #dbe4f2;
-  --injury: #ac3b2c;
-  --injury-fill: #f4d9d3;
-  --flag: #c67a12;
-  --flag-fill: #f6e2bd;
-  --wellness: #2a7d8c;
-  --wellness-fill: #d5ecef;
-  --physio: #6a4e9c;
-  --physio-fill: #e3dbf1;
-  --clean: #2f7d4f;
-  --clean-fill: #d8ecdf;
-  --signal: #c67a12;
-  --signal-ink: #4a3006;
-  --signal-fill: #f6e2bd;
+  /* Node type — shape first, color second. Primary types (Athlete, Injury,
+     Flag) carry a bold shape; secondary/detail types share a small-dot
+     shape and rely on the legend, not a shape zoo, for identification.
+     Hues are spaced ~45-70deg apart (blue 210, rust 20, gold 45, plum 280,
+     moss 100, teal 175) so a red-green or blue-yellow confusion still
+     leaves shape as the disambiguator for the primary three. */
+  --athlete: #2e5c86;
+  --athlete-fill: #eaf1f8;
+  --injury: #a85433;
+  --injury-fill: #f7ece5;
+  --flag: #8a6d1e;
+  --flag-fill: #f7f0dd;
+  --flag-selected-fill: #f5e5b4;
+  --treatment: #6b4a82;
+  --treatment-fill: #f0e9f4;
+  --wellness: #29716c;
+  --wellness-fill: #e7f2f1;
+  --outcome: #4c6b3a;
+  --outcome-fill: #eef3e8;
+  --metric: #6e6656;
+  --metric-fill: #efeae0;
 
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", -apple-system, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --shadow-sm: 0 1px 2px rgba(20, 20, 15, 0.06), 0 1px 1px rgba(20, 20, 15, 0.04);
-  --shadow-md: 0 6px 20px rgba(20, 20, 15, 0.12);
-  --shadow-lg: 0 16px 40px rgba(20, 20, 15, 0.22);
+  /* Spacing scale (px): 4 8 12 16 24 32 48 64 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Corner radii */
+  --r-chip: 4px;
+  --r-control: 8px;
+  --r-card: 12px;
+  --r-sheet: 20px;
+
+  --shadow-card: 0 1px 2px rgba(20, 18, 12, 0.06);
+  --shadow-float: 0 8px 24px rgba(20, 18, 12, 0.1);
+  --shadow-sheet: 0 -8px 24px rgba(20, 18, 12, 0.16);
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #14171a;
-    --paper-raised: #1c2024;
-    --ink: #eceeef;
-    --ink-secondary: #b7bcc1;
-    --ink-muted: #7d8388;
-    --mist: #2a2f34;
-    --mist-strong: #3b4147;
-    --pitch: #0c1512;
-    --pitch-ink: #eef4ef;
+    --bg: #15140f;
+    --surface: #1d1c16;
+    --canvas: #100f0b;
+    --ink: #f1ede2;
+    --ink-muted: #a79e88;
+    --ink-faint: #746c59;
+    --border: #332f24;
+    --border-strong: #4a4433;
 
-    --athlete: #8fb0e6;
-    --athlete-fill: #263449;
-    --injury: #e08a7c;
-    --injury-fill: #45261f;
-    --flag: #e3a94f;
-    --flag-fill: #47391f;
-    --wellness: #7ecbdb;
-    --wellness-fill: #1c3a3e;
-    --physio: #b7a1e0;
-    --physio-fill: #33284a;
-    --clean: #7fca9c;
-    --clean-fill: #1e3a2a;
-    --signal: #e3a94f;
-    --signal-ink: #f6e2bd;
-    --signal-fill: #473b26;
+    --athlete: #7fb0de;
+    --athlete-fill: #1e2e3d;
+    --injury: #de8f63;
+    --injury-fill: #3a2a20;
+    --flag: #d9b454;
+    --flag-fill: #362c14;
+    --flag-selected-fill: #4a3a1b;
+    --treatment: #b891c9;
+    --treatment-fill: #2e2436;
+    --wellness: #6fc4be;
+    --wellness-fill: #163330;
+    --outcome: #93be7d;
+    --outcome-fill: #253018;
+    --metric: #a79e88;
+    --metric-fill: #201e17;
 
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+    /* dark theme: same offsets as light, alpha raised ~1.4x since the
+       surface itself is already dark */
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.45);
   }
 }
 
-/* Manual override via the theme toggle — same values as the media-query
-   block above, since prefers-color-scheme can't itself be forced from a
-   button click. */
 :root[data-theme="dark"] {
-  --paper: #14171a;
-  --paper-raised: #1c2024;
-  --ink: #eceeef;
-  --ink-secondary: #b7bcc1;
-  --ink-muted: #7d8388;
-  --mist: #2a2f34;
-  --mist-strong: #3b4147;
-  --pitch: #0c1512;
-  --pitch-ink: #eef4ef;
+  --bg: #15140f;
+  --surface: #1d1c16;
+  --canvas: #100f0b;
+  --ink: #f1ede2;
+  --ink-muted: #a79e88;
+  --ink-faint: #746c59;
+  --border: #332f24;
+  --border-strong: #4a4433;
 
-  --athlete: #8fb0e6;
-  --athlete-fill: #263449;
-  --injury: #e08a7c;
-  --injury-fill: #45261f;
-  --flag: #e3a94f;
-  --flag-fill: #47391f;
-  --wellness: #7ecbdb;
-  --wellness-fill: #1c3a3e;
-  --physio: #b7a1e0;
-  --physio-fill: #33284a;
-  --clean: #7fca9c;
-  --clean-fill: #1e3a2a;
-  --signal: #e3a94f;
-  --signal-ink: #f6e2bd;
-  --signal-fill: #473b26;
+  --athlete: #7fb0de;
+  --athlete-fill: #1e2e3d;
+  --injury: #de8f63;
+  --injury-fill: #3a2a20;
+  --flag: #d9b454;
+  --flag-fill: #362c14;
+  --flag-selected-fill: #4a3a1b;
+  --treatment: #b891c9;
+  --treatment-fill: #2e2436;
+  --wellness: #6fc4be;
+  --wellness-fill: #163330;
+  --outcome: #93be7d;
+  --outcome-fill: #253018;
+  --metric: #a79e88;
+  --metric-fill: #201e17;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-sheet: 0 -8px 24px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -119,7 +137,7 @@ body {
 }
 
 body {
-  background: var(--paper);
+  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
   display: flex;
@@ -127,17 +145,40 @@ body {
   transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
 }
 
+a {
+  color: var(--athlete);
+}
+
+::selection {
+  background: var(--athlete-fill);
+}
+
+/* --- Type scale ---
+   micro-mono 11/500, small 13/400, small-mono 13/400, body 15/400,
+   subhead 17/600, panel-title 20/600, section 24/600. Sans carries UI
+   chrome and prose; mono is reserved for anything that IS data —
+   property values, relationship types, timestamps, ids, percentages —
+   so a clinician reads "instrumented value" before they even read it. */
+
+.micro-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
 /* --- Header --- */
 
 header {
+  height: 64px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.85rem 1.25rem;
-  border-bottom: 1px solid var(--mist);
-  background: var(--paper-raised);
-  box-shadow: var(--shadow-sm);
-  flex-wrap: wrap;
+  gap: var(--sp-5);
+  padding: 0 var(--sp-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
   position: relative;
   z-index: 30;
 }
@@ -145,72 +186,81 @@ header {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-}
-
-.brand .logo {
+  gap: var(--sp-2);
   flex-shrink: 0;
-  display: block;
 }
 
 header h1 {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0;
   white-space: nowrap;
-  letter-spacing: -0.01em;
 }
 
-header h1 .tagline {
-  display: block;
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  white-space: normal;
+.brand-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 24px;
+  background: var(--border);
 }
 
-.search-box,
+.search-box {
+  position: relative;
+  width: 260px;
+  flex-shrink: 0;
+}
+
 .ask-box {
   position: relative;
-  flex: 1 1 240px;
-  min-width: 180px;
+  flex: 1 1 auto;
+  max-width: 560px;
+}
+
+.field-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  pointer-events: none;
 }
 
 input[type="text"],
 input[type="search"] {
   width: 100%;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--mist-strong);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
+  height: 36px;
+  padding: 0 var(--sp-3) 0 32px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: 13px;
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 
 input[type="text"]:hover,
 input[type="search"]:hover {
-  border-color: var(--ink-muted);
+  border-color: var(--border-strong);
 }
 
 input[type="text"]:focus,
 input[type="search"]:focus {
   outline: none;
   border-color: var(--athlete);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--athlete) 25%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--athlete) 20%, transparent);
 }
 
 .search-results {
   position: absolute;
-  top: calc(100% + 0.35rem);
+  top: calc(100% + var(--sp-2));
   left: 0;
   right: 0;
-  background: var(--paper-raised);
-  border: 1px solid var(--mist-strong);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-float);
   z-index: 20;
   max-height: 260px;
   overflow-y: auto;
@@ -230,11 +280,11 @@ input[type="search"]:focus {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 0.55rem 0.7rem;
+  padding: 10px var(--sp-3);
   border: none;
   background: none;
   color: var(--ink);
-  font-size: 0.82rem;
+  font-size: 13px;
   cursor: pointer;
   font-family: var(--font-sans);
   transition: background-color 0.1s var(--ease);
@@ -242,75 +292,55 @@ input[type="search"]:focus {
 
 .search-results button:hover,
 .search-results button:focus-visible {
-  background: var(--mist);
+  background: var(--canvas);
 }
 
 .search-results .result-label {
   color: var(--ink-muted);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
-  margin-left: 0.4rem;
+  font-size: 11px;
+  margin-left: var(--sp-2);
 }
 
 .ask-box form {
   display: flex;
-  gap: 0.4rem;
 }
 
 button.ask-submit {
-  padding: 0.55rem 0.95rem;
-  border: 1px solid var(--athlete);
-  border-radius: var(--radius-sm);
-  background: var(--athlete);
-  color: #fff;
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: filter 0.12s var(--ease), transform 0.08s var(--ease);
+  display: none;
 }
 
-button.ask-submit:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-button.ask-submit:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-button.ask-submit:disabled {
-  opacity: 0.65;
-  cursor: default;
+.header-spacer {
+  flex-grow: 1;
 }
 
 .icon-button {
   flex-shrink: 0;
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--mist-strong);
-  border-radius: 50%;
-  background: var(--paper);
-  color: var(--ink-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--ink-muted);
   cursor: pointer;
   transition: background-color 0.12s var(--ease), border-color 0.12s var(--ease), transform 0.08s var(--ease);
 }
 
 .icon-button:hover {
-  border-color: var(--athlete);
-  color: var(--athlete);
+  border-color: var(--border-strong);
+  color: var(--ink);
 }
 
 .icon-button:active {
-  transform: scale(0.92);
+  transform: scale(0.94);
 }
 
 .icon-button svg {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 16px;
+  height: 16px;
 }
 
 .icon-button .icon-moon {
@@ -334,6 +364,109 @@ button.ask-submit:disabled {
   display: block;
 }
 
+/* --- Answer band (ask-in-English result) ---
+   A banner under the header, not buried in the detail panel — so the
+   answer stays visible while the matched nodes it highlights are right
+   there on the canvas below it. */
+
+.answer-band {
+  flex-shrink: 0;
+  background: var(--athlete-fill);
+  border-bottom: 1px solid color-mix(in srgb, var(--athlete) 30%, var(--border));
+  padding: var(--sp-3) var(--sp-5);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  box-sizing: border-box;
+  z-index: 15;
+}
+
+.answer-band.hidden {
+  display: none;
+}
+
+.answer-band .answer-icon {
+  flex-shrink: 0;
+  color: var(--athlete);
+  margin-top: 1px;
+}
+
+.answer-band .answer-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.answer-band .answer-summary {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.answer-band .answer-question {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-bottom: var(--sp-1);
+}
+
+.answer-band .answer-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.answer-band button.cypher-toggle {
+  height: 26px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--athlete);
+  cursor: pointer;
+}
+
+.answer-band .cypher {
+  margin-top: var(--sp-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: none;
+}
+
+.answer-band .cypher.open {
+  display: block;
+}
+
+.answer-band .answer-refused,
+.answer-band .answer-errored {
+  color: var(--injury);
+  font-size: 15px;
+}
+
+.answer-band button.answer-dismiss {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-control);
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.answer-band button.answer-dismiss:hover {
+  background: color-mix(in srgb, var(--athlete) 12%, transparent);
+}
+
 /* --- Main layout --- */
 
 main {
@@ -346,30 +479,38 @@ main {
 .graph-pane {
   flex: 1;
   position: relative;
-  background: var(--pitch);
+  background: var(--canvas);
   overflow: hidden;
 }
 
-.graph-pane svg {
+/* #graph-svg specifically, not the descendant selector .graph-pane svg --
+   the legend and zoom-control icons are also SVGs nested inside
+   .graph-pane, and a descendant selector here would stretch every one of
+   them to 100% of some ancestor's box instead of their own 14-16px size. */
+#graph-svg {
   width: 100%;
   height: 100%;
   display: block;
   cursor: grab;
 }
 
-.graph-pane svg.panning {
+#graph-svg.panning {
   cursor: grabbing;
 }
 
 .graph-hint {
   position: absolute;
-  bottom: 0.75rem;
-  left: 0.9rem;
-  color: var(--pitch-ink);
-  opacity: 0.55;
+  bottom: var(--sp-3);
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--ink-faint);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 11px;
   pointer-events: none;
+  background: var(--surface);
+  padding: 3px var(--sp-2);
+  border-radius: var(--r-chip);
+  opacity: 0.85;
 }
 
 .graph-loading {
@@ -379,12 +520,11 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.7rem;
-  background: var(--pitch);
-  color: var(--pitch-ink);
+  gap: var(--sp-3);
+  background: var(--canvas);
+  color: var(--ink-muted);
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  opacity: 0.85;
+  font-size: 12px;
   transition: opacity 0.25s var(--ease);
   z-index: 5;
 }
@@ -398,14 +538,13 @@ main {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 2.5px solid rgba(238, 244, 239, 0.25);
-  border-top-color: var(--pitch-ink);
+  border: 2.5px solid var(--border);
+  border-top-color: var(--athlete);
   animation: spin 0.8s linear infinite;
 }
 
 .graph-loading.errored {
   color: var(--injury);
-  opacity: 1;
 }
 
 .graph-loading.errored .spinner {
@@ -418,50 +557,184 @@ main {
   }
 }
 
+/* --- Floating panels on the canvas (legend, zoom controls) --- */
+
+.legend-panel {
+  position: absolute;
+  left: var(--sp-5);
+  bottom: var(--sp-5);
+  width: 216px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-float);
+  padding: 14px var(--sp-4);
+  box-sizing: border-box;
+  z-index: 10;
+}
+
+.legend-panel .legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-panel .legend-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.legend-panel .legend-chevron {
+  color: var(--ink-faint);
+  transition: transform 0.15s var(--ease);
+}
+
+.legend-panel.collapsed .legend-chevron {
+  transform: rotate(-90deg);
+}
+
+.legend-panel .legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.legend-panel.collapsed .legend-items {
+  display: none;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.legend-item svg {
+  flex-shrink: 0;
+}
+
+.legend-pill {
+  display: none;
+}
+
+/* Mobile-only sheet -- display:none (not just position:fixed, which the
+   max-width:760px block below sets) matters here specifically: without
+   it, this element defaults to position:static outside that breakpoint
+   and becomes a real flex item in <main>, stealing width from
+   .graph-pane via its own content's intrinsic size. */
+.legend-sheet {
+  display: none;
+}
+
+.zoom-controls {
+  position: absolute;
+  right: var(--sp-5);
+  bottom: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.zoom-controls button {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-controls button:hover {
+  background: var(--canvas);
+}
+
+.zoom-controls .zoom-divider {
+  height: 1px;
+  background: var(--border);
+}
+
 /* --- Nodes / edges --- */
 
 .node-shape {
-  stroke: var(--pitch);
-  stroke-width: 1.5;
+  stroke-width: 2;
   cursor: pointer;
-  transition: opacity 0.15s var(--ease), stroke 0.15s var(--ease), stroke-width 0.15s var(--ease);
+  transition: opacity 0.15s var(--ease), stroke-width 0.15s var(--ease);
+}
+
+.node-shape.secondary {
+  stroke-width: 1.6;
 }
 
 .node-shape.dim {
-  opacity: 0.35;
+  opacity: 0.32;
 }
 
 .node-shape.highlighted {
-  stroke: var(--signal);
-  stroke-width: 3;
-  filter: drop-shadow(0 0 7px var(--signal));
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+.node-focus-ring {
+  fill: none;
+  stroke-width: 1;
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .node-label {
-  fill: var(--pitch-ink);
+  fill: var(--ink);
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 600;
   pointer-events: none;
-  paint-order: stroke;
-  stroke: var(--pitch);
-  stroke-width: 3px;
+}
+
+.node-label.secondary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  fill: var(--ink-muted);
 }
 
 .edge-line {
-  stroke: var(--mist-strong);
-  stroke-opacity: 0.55;
-  stroke-width: 1.4;
+  stroke: var(--border-strong);
+  stroke-opacity: 0.7;
+  stroke-width: 1.3;
 }
 
 .edge-line.SIMILAR_PATTERN_TO {
-  stroke: var(--signal);
+  stroke: var(--flag);
   stroke-dasharray: 4 3;
-  stroke-opacity: 0.8;
+  stroke-opacity: 0.85;
 }
 
 .edge-line.PRECEDED {
   stroke: var(--injury);
-  stroke-opacity: 0.75;
+  stroke-opacity: 0.8;
+}
+
+.edge-line.MATCHES {
+  stroke: var(--flag);
+  stroke-opacity: 0.85;
 }
 
 .edge-hit {
@@ -470,15 +743,55 @@ main {
   cursor: pointer;
 }
 
+.edge-label rect {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+
+.edge-label text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  fill: var(--ink-muted);
+}
+
+.edge-label.PRECEDED rect,
+.edge-label.SIMILAR_PATTERN_TO rect,
+.edge-label.MATCHES rect {
+  fill: var(--flag-fill);
+  stroke: color-mix(in srgb, var(--flag) 35%, var(--border));
+}
+
+.edge-label.PRECEDED text,
+.edge-label.SIMILAR_PATTERN_TO text,
+.edge-label.MATCHES text {
+  fill: var(--flag);
+}
+
+/* Flag halo: calm, static rings -- deliberately not a pulsing/red alert.
+   A Flag means "this matches a prior pattern," not "something is wrong
+   right now," so the emphasis has to read as steady attention, not
+   urgency (CLAUDE.md: surfaces evidence, never prescribes). */
+.flag-halo {
+  fill: none;
+  stroke: var(--flag);
+  pointer-events: none;
+}
+
+.flag-halo.outer {
+  opacity: 0.18;
+  stroke-width: 1;
+}
+
+.flag-halo.inner {
+  opacity: 0.4;
+  stroke-width: 1;
+  stroke-dasharray: 1 4;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .node-shape.node-enter {
     animation: node-in 0.3s var(--ease) backwards;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-
-  .node-shape.node-pulse {
-    animation: node-in 0.3s var(--ease) backwards, pulse-glow 2.6s ease-in-out infinite 0.3s;
     transform-box: fill-box;
     transform-origin: center;
   }
@@ -493,16 +806,6 @@ main {
       transform: scale(1);
     }
   }
-
-  @keyframes pulse-glow {
-    0%,
-    100% {
-      filter: drop-shadow(0 0 0 transparent);
-    }
-    50% {
-      filter: drop-shadow(0 0 6px var(--flag));
-    }
-  }
 }
 
 /* --- Detail panel --- */
@@ -512,12 +815,11 @@ main {
 }
 
 aside.detail-panel {
-  width: 320px;
+  width: 380px;
   flex-shrink: 0;
-  border-left: 1px solid var(--mist);
-  background: var(--paper-raised);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
   overflow-y: auto;
-  padding: 1rem;
   position: relative;
 }
 
@@ -525,190 +827,283 @@ aside.detail-panel {
   display: none;
 }
 
-aside.detail-panel .empty {
-  color: var(--ink-muted);
-  font-size: 0.85rem;
+.detail-section {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-section:last-child {
+  border-bottom: none;
+}
+
+.detail-section .section-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--sp-3);
+}
+
+.detail-section .section-subtitle {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: -6px;
+  margin-bottom: var(--sp-3);
+}
+
+.detail-header {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.detail-header .badge-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: 6px;
+}
+
+.detail-header .badge-row span.micro-mono {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.detail-panel .empty {
+  color: var(--ink-faint);
+  font-size: 13px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.6rem;
-  margin-top: 2.5rem;
+  gap: var(--sp-3);
+  margin-top: var(--sp-8);
+  padding: 0 var(--sp-5);
 }
 
-aside.detail-panel .empty::before {
+.detail-panel .empty::before {
   content: "";
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 2px dashed var(--mist-strong);
+  border: 2px dashed var(--border-strong);
 }
 
-.detail-label {
-  display: inline-block;
+.prop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  margin-bottom: 0.6rem;
+  font-size: 12px;
 }
 
-.detail-panel h2 {
-  font-size: 1.05rem;
-  margin: 0 0 0.2rem;
+.prop-list .prop-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
 }
 
-.detail-panel .id {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
+.prop-list .prop-key {
   color: var(--ink-muted);
-  margin-bottom: 0.9rem;
-  word-break: break-all;
+  flex-shrink: 0;
 }
 
-.prop-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-}
-
-.prop-table tr {
-  border-top: 1px solid var(--mist);
-}
-
-.prop-table td {
-  padding: 0.45rem 0.1rem;
-  vertical-align: top;
-}
-
-.prop-table td.key {
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  white-space: nowrap;
-  padding-right: 0.6rem;
-}
-
-.ask-answer {
-  margin-top: 0.9rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--mist);
-}
-
-.ask-answer .question {
-  font-size: 0.78rem;
-  color: var(--ink-muted);
-  margin-bottom: 0.4rem;
-}
-
-.ask-answer .summary {
-  font-size: 0.88rem;
-  line-height: 1.45;
-}
-
-.ask-answer .cypher {
-  margin-top: 0.6rem;
-  background: var(--paper);
-  border: 1px solid var(--mist);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  white-space: pre-wrap;
+.prop-list .prop-value {
+  text-align: right;
   word-break: break-word;
 }
 
-.ask-answer .refused,
-.ask-answer .errored {
-  color: var(--injury);
-  font-size: 0.85rem;
-}
-
-/* --- Legend --- */
-
-footer.legend {
-  border-top: 1px solid var(--mist);
-  background: var(--paper-raised);
-  font-size: 0.72rem;
-  color: var(--ink-secondary);
-  font-family: var(--font-mono);
-}
-
-footer.legend details {
-  padding: 0.5rem 1.25rem;
-}
-
-footer.legend summary {
-  cursor: pointer;
-  list-style: none;
-  display: none;
-  font-weight: 500;
-  color: var(--ink-secondary);
-  user-select: none;
-}
-
-footer.legend summary::-webkit-details-marker {
-  display: none;
-}
-
-footer.legend summary::after {
-  content: "▾";
-  display: inline-block;
-  margin-left: 0.4rem;
-  transition: transform 0.15s var(--ease);
-}
-
-footer.legend details[open] summary::after {
-  transform: rotate(180deg);
-}
-
-.legend-items {
+.rel-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.9rem;
-  padding-top: 0.15rem;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
-.legend-item {
-  display: inline-flex;
+.rel-row {
+  display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--sp-2);
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  display: inline-block;
+.rel-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-chip);
+  padding: 2px 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-/* --- Responsive: narrow / mobile --- */
+.rel-chip.emphasis {
+  color: var(--flag);
+  border-color: color-mix(in srgb, var(--flag) 40%, var(--border));
+}
+
+.rel-row .rel-desc {
+  min-width: 0;
+}
+
+.match-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.match-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 10px var(--sp-3);
+  cursor: pointer;
+  transition: border-color 0.12s var(--ease);
+}
+
+.match-card:hover {
+  border-color: var(--border-strong);
+}
+
+.match-card .match-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.match-card .match-pct {
+  font-family: var(--font-mono);
+  color: var(--flag);
+}
+
+.match-card .match-desc {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.evidence-note {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+/* --- Responsive: narrow / mobile ---
+   Search and Ask collapse into one field (design's mobile pattern: type
+   to search, press Enter with nothing selected to ask). The answer band,
+   floating legend and zoom controls all carry over unchanged. */
 
 @media (max-width: 760px) {
   header {
-    padding: 0.7rem 1rem;
+    height: 56px;
+    padding: 0 14px;
+    gap: 10px;
   }
 
-  header h1 .tagline {
+  .brand h1 {
     display: none;
   }
 
-  .search-box,
+  .brand-divider {
+    display: none;
+  }
+
+  .search-box {
+    width: auto;
+    flex-grow: 1;
+  }
+
   .ask-box {
-    flex-basis: 100%;
+    display: none;
   }
 
   main {
     overflow: hidden;
   }
 
+  .legend-panel {
+    display: none;
+  }
+
+  .legend-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    height: 36px;
+    padding: 0 var(--sp-4);
+    border-radius: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: var(--shadow-float);
+  }
+
+  .legend-sheet {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--surface);
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+    box-shadow: var(--shadow-sheet);
+    box-sizing: border-box;
+    padding: var(--sp-3) var(--sp-5) var(--sp-6);
+    transform: translateY(100%);
+    transition: transform 0.28s var(--ease);
+    z-index: 45;
+  }
+
+  .legend-sheet.open {
+    transform: translateY(0);
+  }
+
+  .legend-sheet .legend-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  .zoom-controls {
+    bottom: 14px;
+    right: 14px;
+  }
+
+  .zoom-controls button {
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
+  }
+
   .detail-backdrop {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(10, 10, 8, 0.45);
+    background: rgba(20, 18, 12, 0.4);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.22s var(--ease);
@@ -726,19 +1121,30 @@ footer.legend details[open] summary::after {
     right: 0;
     bottom: 0;
     width: auto;
-    max-height: 68vh;
+    max-height: 70vh;
     border-left: none;
-    border-top: 1px solid var(--mist);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    box-shadow: var(--shadow-lg);
+    border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+    box-shadow: var(--shadow-sheet);
     transform: translateY(100%);
     transition: transform 0.28s var(--ease);
     z-index: 40;
-    padding-top: 2.4rem;
+    padding-top: var(--sp-4);
   }
 
   aside.detail-panel.open {
     transform: translateY(0);
+  }
+
+  aside.detail-panel::before {
+    content: "";
+    position: sticky;
+    top: 0;
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    margin: 0 auto var(--sp-2);
   }
 
   .detail-close {
@@ -746,33 +1152,25 @@ footer.legend details[open] summary::after {
     align-items: center;
     justify-content: center;
     position: absolute;
-    top: 0.6rem;
-    right: 0.6rem;
-    width: 2rem;
-    height: 2rem;
+    top: var(--sp-2);
+    right: var(--sp-3);
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: none;
-    background: var(--mist);
-    color: var(--ink-secondary);
-    font-size: 1.1rem;
+    background: var(--bg);
+    color: var(--ink-muted);
+    font-size: 16px;
     line-height: 1;
     cursor: pointer;
   }
 
-  aside.detail-panel .empty {
-    margin-top: 1rem;
+  .detail-panel .empty {
+    margin-top: var(--sp-4);
   }
 
-  footer.legend summary {
-    display: block;
-  }
-
-  footer.legend details:not([open]) .legend-items {
-    display: none;
-  }
-
-  footer.legend .legend-items {
-    padding-top: 0.6rem;
+  .answer-band {
+    padding: var(--sp-3) 14px;
   }
 }
 
