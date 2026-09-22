@@ -330,8 +330,15 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
 
     // Flag halo: calm static rings behind the shape, not a pulsing/red
     // alert -- a Flag means "this matches a prior pattern," never
-    // "something is wrong right now."
-    if (style.halo) {
+    // "something is wrong right now." Also drawn on an Athlete carrying
+    // active_flag_count (api/graph.py's fetch_overview no longer sends
+    // Flag nodes into the overview at all -- the agent writes one Flag
+    // per matched historical injury by design, so an at-risk athlete
+    // matching a 5-injury cluster is 5 separate Flag nodes; showing every
+    // one of those on the first screen is exactly the clutter this halo
+    // replaces. Clicking the athlete still reveals the real Flag nodes.
+    const flagCount = node.properties?.active_flag_count;
+    if (style.halo || flagCount) {
       const outer = document.createElementNS(SVG_NS, "circle");
       outer.setAttribute("class", "flag-halo outer");
       outer.setAttribute("r", style.r + 14);
@@ -367,9 +374,10 @@ export function createGraph(svg, { onNodeClick, onEdgeClick, onBackgroundClick }
     }
 
     // Secondary nodes carry no persistent label -- a hover tooltip (and
-    // the detail panel on click) is the full text either way.
+    // the detail panel on click) is the full text either way. A flagged
+    // athlete's halo has no room for a count on its own, so it goes here.
     const title = document.createElementNS(SVG_NS, "title");
-    title.textContent = fullName;
+    title.textContent = flagCount ? `${fullName} · ${flagCount} active flag${flagCount === 1 ? "" : "s"}` : fullName;
     group.appendChild(title);
 
     nodeLayer.appendChild(group);

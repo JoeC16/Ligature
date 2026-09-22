@@ -350,11 +350,20 @@ uvicorn api.app:app --reload
 ```
 
 Open **http://localhost:8000/**. The starting view is deliberately small —
-every `Athlete`, `Injury`, and `Flag`, plus the edges between them. Naively
-expanding an athlete would pull in a season's worth of `Session` and
-`WellnessEntry` nodes at once, so `GET /graph/expand/{id}` dispatches on
-the clicked node's label to a curated, type-specific query instead:
-clicking an athlete surfaces their injuries, flags, and only the
+every `Athlete` with something going on (an `Injury` or a `Flag`) plus
+every `Injury`, and the edges between them. Not every `Athlete` (most of a
+real squad has nothing to show) and no `Flag` nodes at all: the flagging
+agent writes one `Flag` per matched historical injury by design, so an
+at-risk athlete matching the hamstring cluster is 5 separate `Flag` nodes,
+not one — dumping all of that into the first screen defeats the point of
+a curated starting view. A flagged athlete instead carries the same calm
+halo a `Flag` node gets, directly on itself.
+
+Naively expanding an athlete would pull in a season's worth of `Session`
+and `WellnessEntry` nodes at once, so `GET /graph/expand/{id}` dispatches
+on the clicked node's label to a curated, type-specific query instead:
+clicking an athlete surfaces their injuries, their actual `Flag` nodes
+(now connected straight to the injury each one matched), and only the
 `SessionMetric`s that actually precede one of those injuries (never the
 full training log); clicking an injury surfaces its `PRECEDED` sources,
 `SIMILAR_PATTERN_TO` links, and treatment → rehab → outcome chain, if any.

@@ -13,11 +13,9 @@ query.
 
 from __future__ import annotations
 
-# Node labels the overview graph shows outright, and the only labels
-# expand_node() will dispatch on by name. Anything else it might return
-# (SessionMetric, Treatment, Physio, RehabSession, Outcome) falls through
-# to a generic, capped one-hop neighbor expansion.
-OVERVIEW_LABELS = ("Athlete", "Injury", "Flag")
+# Labels with a curated expander below (_EXPANDERS): Athlete, Injury,
+# Flag. Anything else (SessionMetric, Treatment, Physio, RehabSession,
+# Outcome) falls through to a generic, capped one-hop neighbor expansion.
 GENERIC_EXPAND_LIMIT = 25
 
 
@@ -107,14 +105,39 @@ class _Accumulator:
 
 
 def fetch_overview(session) -> dict:
-    """Every Athlete, Injury, and Flag, plus the edges between them
-    (SUSTAINED, SIMILAR_PATTERN_TO, CURRENTLY, MATCHES). The starting
-    view — small, structural, none of the bulk session/wellness nodes."""
+    """Every Athlete with something going on (an Injury or a Flag) plus
+    every Injury, and the SUSTAINED/SIMILAR_PATTERN_TO edges between them.
+    The starting view — small, structural, none of the bulk session/
+    wellness nodes.
+
+    Deliberately NOT every Athlete and NOT any Flag nodes at all: on a
+    real squad, most athletes have nothing to show, and the flagging
+    agent writes one Flag per matched historical injury by design (each
+    stays traceable to one specific case, see flagging_agent/agent.py) --
+    an at-risk athlete matching a 5-injury cluster is 5 separate Flag
+    nodes, not one. Dumping all of that into the first view a physio sees
+    defeats the "small, curated" starting point this endpoint exists for.
+    A flagged athlete instead carries active_flag_count on its own
+    properties -- the frontend draws the same calm halo a Flag node gets,
+    on the athlete directly -- and clicking through (_expand_athlete)
+    reveals the actual Flag nodes and which injuries each one matched."""
     acc = _Accumulator()
 
-    for label in OVERVIEW_LABELS:
-        for record in session.run(f"MATCH (n:{label}) RETURN {_node_return('n')}"):
-            acc.add_node(record)
+    for record in session.run(
+        """
+        MATCH (a:Athlete)
+        WHERE (a)-[:SUSTAINED]->(:Injury) OR (a)-[:CURRENTLY]->(:Flag)
+        OPTIONAL MATCH (a)-[:CURRENTLY]->(f:Flag)
+        RETURN a.id AS id, labels(a)[0] AS label, properties(a) AS properties, count(f) AS flag_count
+        """
+    ):
+        row = _node_row(record)
+        if record["flag_count"]:
+            row["properties"]["active_flag_count"] = record["flag_count"]
+        acc.nodes[row["id"]] = row
+
+    for record in session.run(f"MATCH (n:Injury) RETURN {_node_return('n')}"):
+        acc.add_node(record)
 
     for record in session.run(
         "MATCH (a:Athlete)-[:SUSTAINED]->(i:Injury) RETURN a.id AS from_id, i.id AS to_id"
@@ -128,19 +151,6 @@ def fetch_overview(session) -> dict:
         """
     ):
         acc.add_edge("SIMILAR_PATTERN_TO", record["from_id"], record["to_id"], record["properties"])
-
-    for record in session.run(
-        "MATCH (a:Athlete)-[:CURRENTLY]->(f:Flag) RETURN a.id AS from_id, f.id AS to_id"
-    ):
-        acc.add_edge("CURRENTLY", record["from_id"], record["to_id"])
-
-    for record in session.run(
-        """
-        MATCH (f:Flag)-[r:MATCHES]->(i:Injury)
-        RETURN f.id AS from_id, i.id AS to_id, properties(r) AS properties
-        """
-    ):
-        acc.add_edge("MATCHES", record["from_id"], record["to_id"], record["properties"])
 
     return acc.result(session)
 
@@ -166,12 +176,19 @@ def _expand_athlete(session, athlete_id: str) -> dict:
     for record in session.run(
         f"""
         MATCH (a:Athlete {{id: $id}})-[:CURRENTLY]->(f:Flag)
-        RETURN {_node_return('f')}
+        OPTIONAL MATCH (f)-[r:MATCHES]->(i:Injury)
+        RETURN {_node_return('f')}, i.id AS matched_injury_id, properties(r) AS match_properties
         """,
         id=athlete_id,
     ):
         acc.add_node(record)
         acc.add_edge("CURRENTLY", athlete_id, record["id"])
+        # The matched Injury is already on screen -- fetch_overview now
+        # loads every Injury -- this just draws the line connecting a
+        # revealed Flag to the specific case it matched, without a second
+        # click into the flag itself.
+        if record["matched_injury_id"] is not None:
+            acc.add_edge("MATCHES", record["id"], record["matched_injury_id"], record["match_properties"])
 
     # Only the SessionMetrics that actually preceded one of this athlete's
     # injuries — never the full training log (that's ~120 Sessions/season).
