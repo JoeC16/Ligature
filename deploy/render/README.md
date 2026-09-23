@@ -27,7 +27,12 @@ password to manage at all, so there's nothing left to mismatch or reset.
    the environment. If it instead tries to guess a Python runtime, look
    for an environment/runtime dropdown and switch it to Docker manually.
 4. **Instance type: Free.**
-5. **Environment variables** — only one is needed:
+5. **Environment variables:**
+   - `SESSION_SECRET` = a random value, e.g. the output of
+     `python -c "import secrets; print(secrets.token_hex(32))"` — **required**,
+     the app refuses to start without it (it signs the login session
+     cookie; see `api/app.py`). Generate your own — never reuse a value
+     from this repo's history or docs.
    - `ANTHROPIC_API_KEY` = your real key (optional — without it,
      everything works except the ask-in-English box, which errors on
      submit)
@@ -39,6 +44,19 @@ password to manage at all, so there's nothing left to mismatch or reset.
    why). That cost is paid once per build, not on every deploy restart.
 
 Your app is live at `https://<service-name>.onrender.com`.
+
+## Logging in
+
+Every page now requires a login (see `api/app.py`'s `require_auth`). The
+build bakes in one demo account, credentials intentionally public since
+this account reaches nothing but the synthetic season — no real data for
+a public password to expose:
+
+- **Email:** `demo@ligature.app`
+- **Password:** `ligature-demo`
+
+To add a real staff account instead (for a real pilot deploy, not this
+public demo), see the main README's auth section and `auth/create_user.py`.
 
 ## What to expect
 

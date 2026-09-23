@@ -39,15 +39,33 @@ uses for the memory-constrained free-tier deploy).
    your HF settings works as the password.) Spaces builds the `Dockerfile`
    at the repo root automatically on every push to this remote.
 
-4. **Set your Anthropic key as a Space secret** (never commit it): in the
-   Space's **Settings → Repository secrets**, add
-   `ANTHROPIC_API_KEY` = `sk-ant-...`. Without this, everything works
-   *except* the ask-in-English box, which will error on submit — the rest
-   of the graph explorer (browsing, search, click-to-expand) doesn't need
-   an LLM at all.
+4. **Set two Space secrets** (never commit either): in the Space's
+   **Settings → Repository secrets**:
+   - `SESSION_SECRET` = a random value, e.g. the output of
+     `python -c "import secrets; print(secrets.token_hex(32))"` —
+     **required**, the app refuses to start without it (it signs the
+     login session cookie; see `api/app.py`). Generate your own — never
+     reuse a value from this repo's history or docs.
+   - `ANTHROPIC_API_KEY` = `sk-ant-...` (optional — without it, everything
+     works *except* the ask-in-English box, which will error on submit —
+     the rest of the graph explorer (browsing, search, click-to-expand)
+     doesn't need an LLM at all).
 
 That's it — the Space builds, and in a few minutes you have a public URL at
 `https://huggingface.co/spaces/<your-username>/<space-name>`.
+
+## Logging in
+
+Every page now requires a login (see `api/app.py`'s `require_auth`). The
+build bakes in one demo account, credentials intentionally public since
+this account reaches nothing but the synthetic season below — no real
+data for a public password to expose:
+
+- **Email:** `demo@ligature.app`
+- **Password:** `ligature-demo`
+
+To add a real staff account instead (for a real pilot deploy, not this
+public demo), see the main README's auth section and `auth/create_user.py`.
 
 ## What happens at build time vs. every container start
 

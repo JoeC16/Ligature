@@ -57,6 +57,18 @@ python pattern_engine/run_pattern_engine.py
 echo "[build-seed] Running the flagging agent..."
 python flagging_agent/run_flagging_agent.py
 
+# One well-known, intentionally public login so a visitor can actually see
+# the demo now that every /api/* route requires a session -- this account
+# reaches nothing but the synthetic season above, so there's no real data
+# for a public password to expose. Credentials are documented in
+# deploy/huggingface/README.md and deploy/render/README.md -- keep both in
+# sync with the values below if either changes.
+echo "[build-seed] Creating the demo login..."
+python auth/create_user.py \
+    --email demo@ligature.app \
+    --name "Demo Account" \
+    --password ligature-demo
+
 echo "[build-seed] Writing a snapshot..."
 python3 -c "
 import os
