@@ -28,11 +28,20 @@ def explain(client, question: str, cypher: str, rows: list[dict]) -> Answer:
         "who will verify it against the graph directly. State only what the "
         "results actually show above — never add outside facts or your own "
         "medical knowledge. If the results are empty, say so plainly rather "
-        "than guessing why."
+        "than guessing why. Keep it to a few sentences — a short summary the "
+        "physio scans before checking the underlying rows themselves, not a "
+        "row-by-row enumeration of every result."
     )
+    # 4096, not 1024: a query over the full 30-player squad (e.g. every
+    # hamstring injury plus each one's preceding load spikes) can return
+    # enough rows that a too-tight budget truncates the model mid-summary,
+    # leaving an unterminated JSON string Pydantic can't parse -- seen on
+    # the live deploy. Asking for brevity above keeps typical answers well
+    # under this anyway; the higher ceiling is the safety margin for when a
+    # question legitimately touches a lot of rows.
     response = client.messages.parse(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
         output_format=Answer,
     )
