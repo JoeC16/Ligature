@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from schema_context import SCHEMA_DESCRIPTION
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 
 
 class CypherTranslation(BaseModel):
