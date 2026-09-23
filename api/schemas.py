@@ -146,3 +146,37 @@ class AskResponse(BaseModel):
     reason: str | None = None
     error: str | None = None
     matched_ids: list[str] = []
+
+
+# --- CSV ingestion (build order step 2's "full integration" -- a real
+# upload endpoint + page, not just the CLI script) ---
+
+
+class IngestSkippedRow(BaseModel):
+    line: int
+    reason: str
+
+
+class IngestSourceReport(BaseModel):
+    """Mirrors ingest/ingest_data.py's run_ingest() per-source report
+    shape. file_error set means the file was rejected outright (a
+    missing/misnamed required column) before any row was even attempted;
+    stats/skipped_rows/warnings are only meaningful when it's None."""
+
+    stats: dict[str, int]
+    skipped_rows: list[IngestSkippedRow] = []
+    warnings: list[IngestSkippedRow] = []
+    file_error: str | None = None
+
+
+class IngestReport(BaseModel):
+    """roster is always populated; gps/wellness/injuries are None when
+    that file wasn't uploaded. aborted is true only when the roster
+    itself failed to load -- every other source resolves athletes against
+    it, so nothing else runs in that case."""
+
+    roster: IngestSourceReport
+    gps: IngestSourceReport | None = None
+    wellness: IngestSourceReport | None = None
+    injuries: IngestSourceReport | None = None
+    aborted: bool

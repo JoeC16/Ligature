@@ -71,7 +71,84 @@ def parse_args():
     return args
 
 
+def _trim(result: dict, *raw_keys: str) -> dict:
+    """Drops the raw entity/edge lists a source importer returns (already
+    written to the graph by this point) from its report, keeping just
+    stats/skipped_rows/warnings/file_error -- the shape both the CLI's
+    report() and api/app.py's POST /ingest JSON response actually need.
+    Returning the full ingested dataset back to a browser on every upload
+    would make the response arbitrarily large for no reason."""
+    return {k: v for k, v in result.items() if k not in raw_keys}
+
+
+def run_ingest(
+    session,
+    roster_path: str,
+    gps_path: str | None = None,
+    wellness_path: str | None = None,
+    injuries_path: str | None = None,
+) -> dict:
+    """Runs the full ingest pipeline against an already-open session and
+    returns a structured, JSON-serializable report -- no printing, no CLI
+    argument parsing -- so both this module's own CLI (main(), below) and
+    api/app.py's POST /ingest route drive the identical pipeline and get
+    identical results back. Same split as nl_query/ask.py's
+    ask()/print_result(): one function returns data, the CLI-only caller
+    turns it into terminal output.
+
+    result["aborted"] is True only when the roster itself fails to load
+    (a missing/misnamed name column, most likely) -- every other source
+    resolves athletes against it, so there's nothing meaningful to ingest
+    without it. A gps/wellness/injuries-specific file_error, by contrast,
+    doesn't abort the run; the other sources are independent and still go
+    ahead."""
+    db.run_constraints(session)
+
+    roster = load_roster(roster_path)
+    result = {
+        "roster": {"stats": roster.stats, "skipped_rows": roster.skipped_rows, "file_error": roster.file_error},
+        "gps": None,
+        "wellness": None,
+        "injuries": None,
+        "aborted": bool(roster.file_error),
+    }
+    if roster.file_error:
+        return result
+    db.write_nodes(session, "Athlete", roster.athletes)
+
+    if gps_path:
+        gps_result = import_gps(gps_path, roster)
+        if not gps_result.get("file_error"):
+            db.write_nodes(session, "Session", gps_result["sessions"])
+            db.write_nodes(session, "SessionMetric", gps_result["session_metrics"])
+            db.write_edges(session, EDGE_QUERIES["participated_in"], gps_result["edges"]["participated_in"])
+            db.write_edges(session, EDGE_QUERIES["produced_metric"], gps_result["edges"]["produced_metric"])
+        result["gps"] = _trim(gps_result, "sessions", "session_metrics", "edges")
+
+    if wellness_path:
+        wellness_result = import_wellness(wellness_path, roster)
+        if not wellness_result.get("file_error"):
+            db.write_nodes(session, "WellnessEntry", wellness_result["wellness_entries"])
+            db.write_edges(session, EDGE_QUERIES["reported"], wellness_result["edges"]["reported"])
+        result["wellness"] = _trim(wellness_result, "wellness_entries", "edges")
+
+    if injuries_path:
+        injuries_result = import_injuries(injuries_path, roster)
+        if not injuries_result.get("file_error"):
+            db.write_nodes(session, "Injury", injuries_result["injuries"])
+            db.write_edges(session, EDGE_QUERIES["sustained"], injuries_result["edges"]["sustained"])
+        result["injuries"] = _trim(injuries_result, "injuries", "edges")
+
+    return result
+
+
 def report(source_name: str, result: dict):
+    file_error = result.get("file_error")
+    if file_error:
+        # A missing/misnamed required column -- surfaced once, here,
+        # instead of every row failing with the same confusing reason.
+        print(f"\n{source_name}: {file_error}")
+        return
     stats = result["stats"]
     print(f"\n{source_name}: read {stats['read']}, loaded {stats['loaded']}, skipped {stats['skipped']}")
     for warning in result.get("warnings", []):
@@ -80,42 +157,29 @@ def report(source_name: str, result: dict):
         print(f"    skipped (line {skip['line']}): {skip['reason']}")
 
 
+def print_result(result: dict):
+    report("Roster", result["roster"])
+    if result["aborted"]:
+        print("\nAborting -- every other source resolves athletes against the roster.")
+        return
+    for source_name, key in [("GPS/session", "gps"), ("Wellness", "wellness"), ("Injuries", "injuries")]:
+        if result[key] is not None:
+            report(source_name, result[key])
+
+
 def main():
     args = parse_args()
     driver = db.connect()
 
     with driver.session() as session:
-        print("Applying schema constraints...")
-        db.run_constraints(session)
-
-        print(f"Loading roster from {args.roster} ...")
-        roster = load_roster(args.roster)
-        db.write_nodes(session, "Athlete", roster.athletes)
-        print(f"  {len(roster.athletes)} athletes upserted")
-
-        if args.gps:
-            result = import_gps(args.gps, roster)
-            db.write_nodes(session, "Session", result["sessions"])
-            db.write_nodes(session, "SessionMetric", result["session_metrics"])
-            db.write_edges(session, EDGE_QUERIES["participated_in"], result["edges"]["participated_in"])
-            db.write_edges(session, EDGE_QUERIES["produced_metric"], result["edges"]["produced_metric"])
-            report("GPS/session", result)
-
-        if args.wellness:
-            result = import_wellness(args.wellness, roster)
-            db.write_nodes(session, "WellnessEntry", result["wellness_entries"])
-            db.write_edges(session, EDGE_QUERIES["reported"], result["edges"]["reported"])
-            report("Wellness", result)
-
-        if args.injuries:
-            result = import_injuries(args.injuries, roster)
-            db.write_nodes(session, "Injury", result["injuries"])
-            db.write_edges(session, EDGE_QUERIES["sustained"], result["edges"]["sustained"])
-            report("Injuries", result)
-
-        db.print_summary(session)
+        result = run_ingest(session, args.roster, args.gps, args.wellness, args.injuries)
+        print_result(result)
+        if not result["aborted"]:
+            db.print_summary(session)
 
     driver.close()
+    if result["aborted"]:
+        sys.exit(1)
     print("\nDone.")
 
 

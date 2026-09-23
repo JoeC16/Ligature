@@ -84,13 +84,29 @@ def clean_str(value: str | None) -> str | None:
     return text or None
 
 
+def _normalize_key(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
 def row_get(row: dict, *aliases: str) -> str | None:
     """Case/whitespace-insensitive lookup across a csv.DictReader row for
     any of the given column-name aliases — every source names its columns
     differently, this is how each importer copes with that."""
-    lookup = {re.sub(r"\s+", " ", k.strip().lower()): v for k, v in row.items() if k}
+    lookup = {_normalize_key(k): v for k, v in row.items() if k}
     for alias in aliases:
-        key = re.sub(r"\s+", " ", alias.strip().lower())
+        key = _normalize_key(alias)
         if key in lookup:
             return lookup[key]
     return None
+
+
+def missing_required_columns(fieldnames: list[str] | None, required: list[tuple[str, list[str]]]) -> list[str]:
+    """Checked once against a CSV's header, before iterating rows — a file
+    with no column matching one of the required alias groups would
+    otherwise fail the exact same way on every single row (e.g. "unmatched
+    athlete 'None'" repeated N times), which reads as N different problems
+    instead of the one real one: a missing/misnamed column. `required` is
+    [(human label, [aliases...]), ...]; returns the labels that don't
+    match any actual header."""
+    available = {_normalize_key(fn) for fn in (fieldnames or [])}
+    return [label for label, aliases in required if not any(_normalize_key(a) in available for a in aliases)]
