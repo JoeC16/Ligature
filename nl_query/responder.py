@@ -12,7 +12,7 @@ import json
 
 from pydantic import BaseModel, Field
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 
 
 class Answer(BaseModel):

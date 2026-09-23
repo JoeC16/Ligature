@@ -38,11 +38,21 @@ from translator import translate  # noqa: E402
 def ask(client, session, question: str) -> dict:
     """Runs the full translate -> guard -> execute -> explain pipeline and
     returns a structured result instead of printing, so callers other than
-    the CLI (namely api/app.py's POST /ask) can get JSON back directly
+    the CLI (namely api/app.py's POST /api/ask) can get JSON back directly
     rather than parsing stdout. `status` is one of "ok", "refused", "unsafe",
     or "error" — exactly one of the other keys is populated accordingly.
+
+    Every external call (the two to Anthropic, the one to the database) is
+    wrapped in its own try/except -- a bad model id, an expired API key, or
+    a rate limit should come back as a normal {"status": "error", ...} the
+    frontend can show inline, not an unhandled exception FastAPI turns into
+    a bare 500 with zero diagnostic detail in the response body.
     """
-    translation = translate(client, question)
+    try:
+        translation = translate(client, question)
+    except Exception as e:
+        return {"status": "error", "question": question, "cypher": None, "error": str(e)}
+
     if translation.cypher is None:
         return {"status": "refused", "question": question, "refusal_reason": translation.refusal_reason}
 
@@ -56,7 +66,10 @@ def ask(client, session, question: str) -> dict:
     except Exception as e:
         return {"status": "error", "question": question, "cypher": translation.cypher, "error": str(e)}
 
-    answer = explain(client, question, translation.cypher, rows)
+    try:
+        answer = explain(client, question, translation.cypher, rows)
+    except Exception as e:
+        return {"status": "error", "question": question, "cypher": translation.cypher, "error": str(e)}
 
     return {
         "status": "ok",
@@ -77,7 +90,10 @@ def print_result(result: dict) -> None:
         print(f"Refusing to run this query: {result['reason']}")
         return
     if result["status"] == "error":
-        print(f"Query failed to run:\n{result['cypher']}\n\nError: {result['error']}")
+        if result["cypher"] is None:
+            print(f"Error: {result['error']}")
+        else:
+            print(f"Query failed to run:\n{result['cypher']}\n\nError: {result['error']}")
         return
 
     print(result["summary"])
