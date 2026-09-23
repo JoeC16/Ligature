@@ -36,6 +36,11 @@ password to manage at all, so there's nothing left to mismatch or reset.
    - `ANTHROPIC_API_KEY` = your real key (optional — without it,
      everything works except the ask-in-English box, which errors on
      submit)
+   - `ANTHROPIC_WORKSPACE_ID` = only add this if the ask-in-English box
+     errors with *"This API key is not scoped to a workspace..."* — an
+     org-level key needs this set to the target workspace's id (Anthropic
+     Console → that workspace) on every request. A workspace-scoped key
+     needs no header and no action here.
 6. Create the service. First build takes a few minutes — longer than a
    typical Docker service, since the build now also generates the full
    synthetic season and runs the pattern engine + flagging agent against

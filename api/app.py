@@ -140,7 +140,16 @@ async def lifespan(app: FastAPI):
     # anthropic.Anthropic() reads ANTHROPIC_API_KEY from the environment —
     # this must run after db.connect(), which is what loads .env as a side
     # effect (see common/db.py). Same ordering bug step 5 already hit once.
-    app.state.anthropic_client = anthropic.Anthropic()
+    #
+    # ANTHROPIC_WORKSPACE_ID is optional and usually unnecessary — only
+    # needed for an org-level API key that isn't scoped to one workspace,
+    # which the API otherwise rejects with "This API key is not scoped to
+    # a workspace..." (seen on the live deploy). A workspace-scoped key
+    # needs no header at all; this exists for whichever kind of key you'd
+    # rather keep using.
+    workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    default_headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
+    app.state.anthropic_client = anthropic.Anthropic(default_headers=default_headers)
     yield
     app.state.driver.close()
 

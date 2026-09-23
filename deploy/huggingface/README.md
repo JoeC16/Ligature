@@ -50,6 +50,11 @@ uses for the memory-constrained free-tier deploy).
      works *except* the ask-in-English box, which will error on submit —
      the rest of the graph explorer (browsing, search, click-to-expand)
      doesn't need an LLM at all).
+   - `ANTHROPIC_WORKSPACE_ID` = only add this if the ask-in-English box
+     errors with *"This API key is not scoped to a workspace..."* — an
+     org-level key needs this set to the target workspace's id (Anthropic
+     Console → that workspace) on every request. A workspace-scoped key
+     needs no header and no action here.
 
 That's it — the Space builds, and in a few minutes you have a public URL at
 `https://huggingface.co/spaces/<your-username>/<space-name>`.
