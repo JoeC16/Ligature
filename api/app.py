@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import date as date_cls
 from pathlib import Path
@@ -37,20 +38,23 @@ from pathlib import Path
 API_DIR = Path(__file__).resolve().parent
 REPO_ROOT = API_DIR.parent
 NL_QUERY_DIR = REPO_ROOT / "nl_query"
+INGEST_DIR = REPO_ROOT / "ingest"
 sys.path.insert(0, str(API_DIR))
 sys.path.insert(0, str(NL_QUERY_DIR))
+sys.path.insert(0, str(INGEST_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
 from common import db  # noqa: E402
 
 import anthropic  # noqa: E402
-from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 import graph  # noqa: E402
 import reads  # noqa: E402
 import writes  # noqa: E402
 from ask import ask as run_ask  # noqa: E402
+from ingest_data import run_ingest  # noqa: E402
 from schemas import (  # noqa: E402
     AskRequest,
     AskResponse,
@@ -58,6 +62,7 @@ from schemas import (  # noqa: E402
     FlagResolved,
     GraphNode,
     GraphSubgraph,
+    IngestReport,
     OpenInjury,
     OpenRehabSession,
     OpenTreatment,
@@ -70,6 +75,12 @@ from schemas import (  # noqa: E402
     TreatmentCreated,
     UnreviewedFlag,
 )
+
+# Cheap sanity cap, not a real abuse defense (that needs the auth/rate
+# limiting this deploy doesn't have yet) -- just enough to stop a single
+# oversized upload from choking a free-tier instance's memory/disk before
+# any of that exists.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 # Ids across this codebase are "{prefix}-{suffix}", e.g. athlete-1,
 # injury-athlete1-hamstring, flag-a1b2c3d4. Used by POST /ask to
@@ -192,6 +203,44 @@ def resolve_flag(flag_id: str, body: FlagResolve, session=Depends(get_session)):
 
     writes.resolve_flag(session, flag_id, body.resolution_state, body.notes)
     return FlagResolved(id=flag_id, resolution_state=body.resolution_state)
+
+
+def _save_upload(upload: UploadFile, dest_dir: Path, filename: str) -> str:
+    content = upload.file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"{upload.filename or filename} is over the {MAX_UPLOAD_BYTES // (1024 * 1024)}MB upload limit")
+    dest = dest_dir / filename
+    dest.write_bytes(content)
+    return str(dest)
+
+
+@app.post("/ingest", response_model=IngestReport)
+def ingest_files(
+    roster: UploadFile = File(..., description="Athlete roster CSV — required, every other file resolves athletes against it"),
+    gps: UploadFile | None = File(None, description="GPS/session export CSV"),
+    wellness: UploadFile | None = File(None, description="Wellness survey export CSV"),
+    injuries: UploadFile | None = File(None, description="Injury log CSV"),
+    session=Depends(get_session),
+):
+    """Upload half of ingest/ingest_data.py's CLI pipeline (build order
+    step 2's "full integration" — this codebase's other CLI-only pipeline,
+    same treatment step 5/7 already gave the NL query layer and the
+    treatment/rehab input API). Saves each upload to a throwaway temp
+    directory, runs the exact same run_ingest() the CLI calls, and returns
+    its report — the CLI and this route can never drift apart on what
+    counts as a successfully-loaded row versus a skip.
+
+    No auth on this endpoint yet (tracked separately — a real pilot needs
+    per-club data isolation before real athlete data should ever reach
+    it); until then this is additive/idempotent against whatever graph is
+    already live, same as the CLI."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp = Path(tmp_dir)
+        roster_path = _save_upload(roster, tmp, "roster.csv")
+        gps_path = _save_upload(gps, tmp, "gps.csv") if gps else None
+        wellness_path = _save_upload(wellness, tmp, "wellness.csv") if wellness else None
+        injuries_path = _save_upload(injuries, tmp, "injuries.csv") if injuries else None
+        return run_ingest(session, roster_path, gps_path, wellness_path, injuries_path)
 
 
 @app.get("/graph/overview", response_model=GraphSubgraph)

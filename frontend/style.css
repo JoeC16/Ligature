@@ -1286,6 +1286,226 @@ aside.detail-panel {
   }
 }
 
+/* --- Import data page (frontend/ingest.html) --- */
+
+.ingest-main {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-7) var(--sp-5);
+  box-sizing: border-box;
+}
+
+.ingest-shell {
+  width: 100%;
+  max-width: 640px;
+}
+
+.ingest-intro h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 var(--sp-2);
+}
+
+.ingest-intro p {
+  color: var(--ink-muted);
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0 0 var(--sp-6);
+}
+
+.ingest-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-5);
+}
+
+.ingest-field label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--sp-2);
+}
+
+.ingest-required {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--injury);
+  margin-left: var(--sp-2);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ingest-field input[type="file"] {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink);
+  box-sizing: border-box;
+  padding: var(--sp-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--canvas);
+}
+
+.ingest-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin: var(--sp-1) 0 0;
+}
+
+.ingest-submit {
+  align-self: flex-start;
+  padding: 10px var(--sp-5);
+  border: none;
+  border-radius: var(--r-control);
+  background: var(--athlete);
+  color: var(--surface);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s var(--ease), transform 0.08s var(--ease);
+}
+
+.ingest-submit:hover {
+  opacity: 0.92;
+}
+
+.ingest-submit:active {
+  transform: scale(0.97);
+}
+
+.ingest-submit:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ingest-report {
+  margin-top: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.ingest-report.hidden {
+  display: none;
+}
+
+.ingest-source-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: var(--sp-4);
+}
+
+.ingest-source-card .ingest-source-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--sp-2);
+}
+
+.ingest-source-card .ingest-file-error {
+  color: var(--injury);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ingest-stat-row {
+  display: flex;
+  gap: var(--sp-5);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin-bottom: var(--sp-2);
+}
+
+.ingest-stat-row strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ingest-stat-row .ingest-stat-skipped strong {
+  color: var(--injury);
+}
+
+.ingest-detail-toggle {
+  border: none;
+  background: none;
+  color: var(--athlete);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: var(--sp-1);
+}
+
+.ingest-detail-toggle:hover {
+  text-decoration: underline;
+}
+
+.ingest-row-list {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.ingest-row-list.open {
+  display: flex;
+}
+
+.ingest-row-list li {
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
+.ingest-row-list .ingest-row-line {
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+  margin-right: var(--sp-2);
+}
+
+.ingest-banner {
+  border-radius: var(--r-control);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ingest-banner.ingest-banner-error {
+  background: var(--injury-fill);
+  color: var(--injury);
+}
+
+.ingest-banner.ingest-banner-aborted {
+  background: var(--injury-fill);
+  color: var(--injury);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .ingest-main {
+    padding: var(--sp-5) var(--sp-4);
+  }
+
+  .ingest-form {
+    padding: var(--sp-4);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;

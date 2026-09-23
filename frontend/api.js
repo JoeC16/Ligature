@@ -35,3 +35,16 @@ export function askQuestion(question) {
     body: JSON.stringify({ question }),
   });
 }
+
+// files: { roster: File, gps: File|null, wellness: File|null, injuries: File|null }.
+// No Content-Type header here on purpose -- the browser sets
+// multipart/form-data with the right boundary itself; setting it manually
+// breaks the upload.
+export function uploadIngest(files) {
+  const formData = new FormData();
+  formData.append("roster", files.roster);
+  if (files.gps) formData.append("gps", files.gps);
+  if (files.wellness) formData.append("wellness", files.wellness);
+  if (files.injuries) formData.append("injuries", files.injuries);
+  return request("/ingest", { method: "POST", body: formData });
+}
