@@ -32,13 +32,27 @@ RELATIONSHIPS (always this direction):
   (Session)-[:PRODUCED]->(SessionMetric)
   (Athlete)-[:REPORTED]->(WellnessEntry)
   (Athlete)-[:SUSTAINED]->(Injury)
-  (SessionMetric)-[:PRECEDED {lag_days, correlation_strength}]->(Injury)
+  (SessionMetric)-[:PRECEDED {lag_days, correlation_strength, deviating_fields,
+                              deviating_zscores, baseline_means, baseline_stds}]->(Injury)
   (Injury)-[:SIMILAR_PATTERN_TO {shared_metrics, confidence}]->(Injury)
   (Injury)-[:HAS_NOTE]->(ClinicalNote)
   (Physio)-[:ADMINISTERED]->(Treatment)
   (Treatment)-[:TARGETS]->(Injury)
   (Treatment)-[:FOLLOWED_BY {days_gap}]->(RehabSession)
   (RehabSession)-[:PRODUCED]->(Outcome)
+
+PRECEDED's four extra properties explain *why* a SessionMetric was flagged as
+a lead-in to the injury, computed against that specific athlete's own recent
+history (never a population or clinical benchmark — see RULES below):
+deviating_fields is the list of SessionMetric field names (from
+hsr_distance_m/sprint_count/accel_decel_load/total_distance_m) that were
+elevated versus her baseline; deviating_zscores, baseline_means, and
+baseline_stds are parallel lists in that same field order — index i across
+all four describes one field (e.g. deviating_fields[0] = "hsr_distance_m",
+baseline_means[0] = her average hsr_distance_m over her own prior sessions,
+baseline_stds[0] = its standard deviation, deviating_zscores[0] = how many
+standard deviations above that average this session's actual hsr_distance_m
+value was — read the value itself off the SessionMetric node, e.g. m.hsr_distance_m).
 
 RULES:
 - Generate exactly one read-only Cypher query. Never CREATE, MERGE, SET,
@@ -58,12 +72,27 @@ RULES:
   wellness trend or a protocol comparison should still return the
   `Athlete.id` / `RehabSession.id` / etc. of every node involved alongside
   whatever human-readable columns answer the question, not instead of them.
+- When a question asks *why* a metric is considered a lead-in to an injury
+  (not just which one, or how strongly), return PRECEDED's
+  deviating_fields/deviating_zscores/baseline_means/baseline_stds alongside
+  the SessionMetric's own field values, so the answer can state "this
+  session's hsr_distance_m was N, versus her own baseline average of M" —
+  never invent or assume a population-level or clinical threshold ("the
+  recommended load is...") that isn't one of these listed properties; the
+  only baseline that exists in this graph is the athlete's own.
 
 EXAMPLE QUERIES (real queries already used elsewhere against this exact schema):
 
   # Which sessions preceded a given injury, and how strongly
   MATCH (m:SessionMetric)-[p:PRECEDED]->(i:Injury {type: 'hamstring strain'})
   RETURN m, p, i
+
+  # Why a metric preceded an injury -- her own baseline vs. what she actually did
+  MATCH (a:Athlete)-[:SUSTAINED]->(i:Injury {id: 'injury-athlete8-calf'})
+  MATCH (m:SessionMetric)-[p:PRECEDED]->(i)
+  RETURN a.id AS athlete_id, m.id AS metric_id, m.hsr_distance_m, m.sprint_count,
+         m.accel_decel_load, m.total_distance_m, p.deviating_fields,
+         p.deviating_zscores, p.baseline_means, p.baseline_stds, p.lag_days
 
   # Injuries with no treatment logged yet
   MATCH (a:Athlete)-[:SUSTAINED]->(i:Injury)

@@ -42,7 +42,9 @@ PRECEDED_QUERY = """
     UNWIND $rows AS row
     MATCH (m:SessionMetric {id: row.metric_id}), (i:Injury {id: row.injury_id})
     MERGE (m)-[p:PRECEDED]->(i)
-    SET p.lag_days = row.lag_days, p.correlation_strength = row.correlation_strength
+    SET p.lag_days = row.lag_days, p.correlation_strength = row.correlation_strength,
+        p.deviating_fields = row.deviating_fields, p.deviating_zscores = row.deviating_zscores,
+        p.baseline_means = row.baseline_means, p.baseline_stds = row.baseline_stds
 """
 
 SIMILAR_PATTERN_TO_QUERY = """
