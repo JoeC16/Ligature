@@ -180,3 +180,17 @@ class IngestReport(BaseModel):
     wellness: IngestSourceReport | None = None
     injuries: IngestSourceReport | None = None
     aborted: bool
+
+
+# --- Auth (see auth/users.py) ---
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserProfile(BaseModel):
+    id: str
+    email: str
+    name: str

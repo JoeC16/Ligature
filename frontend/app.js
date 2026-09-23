@@ -1,4 +1,4 @@
-import { getOverview, expandNode, searchNodes, getNodesByIds, askQuestion } from "./api.js";
+import { getOverview, expandNode, searchNodes, getNodesByIds, askQuestion, getMe, logout } from "./api.js";
 import { createGraph } from "./graph.js";
 
 const svg = document.getElementById("graph-svg");
@@ -28,6 +28,8 @@ const filterActiveOnly = document.getElementById("filter-active-only");
 const filterTypes = document.getElementById("filter-types");
 const filterPositions = document.getElementById("filter-positions");
 const filterReset = document.getElementById("filter-reset");
+const userNameEl = document.getElementById("user-name");
+const logoutButton = document.getElementById("logout-button");
 
 const MOBILE_QUERY = window.matchMedia("(max-width: 760px)");
 
@@ -629,6 +631,28 @@ themeToggle.addEventListener("click", () => {
 
 initTheme();
 
+// --- Auth (logged-in name + logout; a 401 anywhere -- including this
+// getMe() call -- already redirects to login.html via api.js's shared
+// request() helper) ---
+
+getMe()
+  .then((user) => {
+    userNameEl.textContent = user.name;
+  })
+  .catch(() => {
+    // request() is already redirecting to login.html for a 401 -- nothing
+    // else to do here.
+  });
+
+logoutButton.addEventListener("click", async () => {
+  try {
+    await logout();
+  } catch (err) {
+    console.error("logout failed", err);
+  }
+  location.href = "login.html";
+});
+
 // --- Initial load ---
 
 getOverview()
@@ -644,6 +668,10 @@ getOverview()
   })
   .catch((err) => {
     console.error("overview load failed", err);
+    // A 401 here means request() already kicked off a redirect to
+    // login.html -- showing "couldn't load the graph" for the instant
+    // before that navigation lands would just be a confusing flash.
+    if (String(err.message).startsWith("401")) return;
     graphLoading.classList.add("errored");
     graphLoadingText.textContent = "Couldn't load the graph. Is the API reachable?";
   });

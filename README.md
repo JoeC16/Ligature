@@ -82,7 +82,7 @@ This repo currently implements **all 7 build order steps**:
 Requires Docker and Python 3.11+.
 
 ```bash
-cp .env.example .env          # defaults are fine for local dev
+cp .env.example .env          # then fill in SESSION_SECRET -- see below
 docker compose up -d          # starts Memgraph (Bolt on 7687, Lab UI on 3000)
 
 python3 -m venv .venv
@@ -92,6 +92,13 @@ pip install -r requirements.txt
 python seed/seed_data.py
 python pattern_engine/run_pattern_engine.py
 ```
+
+`.env` needs one thing filled in before the app will start:
+`SESSION_SECRET`, a random value that signs the login session cookie (see
+"Log in" below) — `python -c "import secrets; print(secrets.token_hex(32))"`.
+Also uncomment `COOKIE_SECURE=false` in `.env` for local dev — cookies are
+Secure (HTTPS-only) by default, which is right for a real deploy but means
+your browser silently drops the login cookie over plain `http://localhost`.
 
 The seed script applies the schema constraints, wipes any existing graph
 data, generates one season of synthetic data, and writes it all in. It's
@@ -103,6 +110,40 @@ Memgraph Lab: http://localhost:3000 — connect using host `memgraph`
 (the compose service name; use `localhost` if running Lab outside
 Docker) and port `7687`. No username/password: Memgraph's community
 build (what `docker-compose.yml` runs) doesn't enforce authentication.
+
+## Log in
+
+Every `/api/*` route (everything except `/health` and the static frontend
+files) requires a login session — see `api/app.py`'s `require_auth`. This
+is app-level auth, unrelated to Memgraph's own (nonexistent) database
+auth above: real athlete data reaching this app is the thing being
+protected, not the graph database it happens to be stored in.
+
+There's no self-serve signup — CLAUDE.md's go-to-market model is one
+pilot club at a time with white-glove setup, not a public product with
+accounts anyone can create. Create the first login with:
+
+```bash
+python auth/create_user.py --email you@example.com --name "Your Name"
+```
+
+Prompts for a password (not echoed, never left in shell history). Run it
+again for each additional staff member. Then log in at
+http://localhost:8000/login.html once the app is running (see "Log a
+treatment" and "The graph explorer" below for `uvicorn api.app:app`).
+
+**Isolation model**: this app has no multi-tenant data model — every
+account created against a given database sees that database's whole
+graph, with nothing scoping one club's data from another's. That's
+deliberate, not an oversight: Memgraph's community build has no
+multi-tenancy (isolated per-tenant databases are an Enterprise-only
+feature), so real isolation between clubs means **one deployed instance
+per club**, each with its own Memgraph and its own accounts — not one
+shared app serving many clubs. See `deploy/render/README.md` /
+`deploy/huggingface/README.md` for the public single-tenant demo (an
+intentionally public demo login, no real data ever); a real pilot deploy
+needs its own separate instance, its own `SESSION_SECRET`, and real
+accounts created with the command above — never the demo's.
 
 ## What gets seeded
 
@@ -120,7 +161,7 @@ build (what `docker-compose.yml` runs) doesn't enforce authentication.
   what "still in rehab" means in this graph). Those six are themselves
   staggered across the pipeline — one injury with no treatment logged yet,
   one treated but rehab not started, three at increasing points into an
-  active program — so `GET /injuries/open`, `/treatments/open`, and
+  active program — so `GET /api/injuries/open`, `/api/treatments/open`, and
   `/rehab-sessions/open` all have something real behind them (see "Log a
   treatment" below).
 - **The hamstring cluster**: 5 athletes (athlete-1 through athlete-5) each
@@ -196,8 +237,8 @@ threshold writes a `Flag`, `(Athlete)-[:CURRENTLY]->(Flag)-[:MATCHES]->
   `MATCH (a:Athlete {id: 'athlete-3'}) SET a.flag_threshold = 0.3`
 - **Resolution state on every flag** — `unreviewed` by default, written
   back once a physio reviews it. Reuses the step-4 API:
-  `GET /flags/unreviewed` to see what needs review, `POST
-  /flags/{id}/resolve` (`resolution_state`: `actioned` or `dismissed`) to
+  `GET /api/flags/unreviewed` to see what needs review, `POST
+  /api/flags/{id}/resolve` (`resolution_state`: `actioned` or `dismissed`) to
   close it out. That resolution history is the point per CLAUDE.md — "the
   long-term asset: ground truth on which flags were real vs. false
   alarms."
@@ -258,7 +299,7 @@ RETURN w.date, w.sleep_quality, w.hrv, w.soreness ORDER BY w.date
 `nl_query/ask.py` is CLAUDE.md's step 5 — text-to-Cypher against the fixed
 schema above. It started as a standalone CLI prototype, per CLAUDE.md's own
 phasing ("can be prototyped standalone before full integration"), and as of
-step 7 is also wired into `api/app.py`'s `POST /ask` — the graph explorer's
+step 7 is also wired into `api/app.py`'s `POST /api/ask` — the graph explorer's
 ask-in-English box calls the same `ask()` pipeline function this CLI does,
 just returning a structured result instead of printing one. This is the
 first place an LLM enters the system, so it needs your own key:
@@ -295,28 +336,33 @@ only ever shown the literal rows the query returned.
 `RehabSession` → `Outcome` — CLAUDE.md's build-order step 4 ("simple
 internal form or API endpoint, not polished UI yet; enough to test the
 closed-loop query"). It also serves step 6's flag review endpoints
-(`GET /flags/unreviewed`, `POST /flags/{id}/resolve`) — see "Flag athletes
+(`GET /api/flags/unreviewed`, `POST /api/flags/{id}/resolve`) — see "Flag athletes
 at risk" above — and, as of step 7, the graph explorer itself at `/`.
 
 ```bash
 uvicorn api.app:app --reload
 ```
 
+Every `/api/*` route requires a login session (see "Log in" above) —
+Swagger UI's own "Try it out" still needs a real browser session cookie to
+get past it, same as any other client, so log in at
+http://localhost:8000/login.html in the same browser first.
+
 Open **http://localhost:8000/docs** — Swagger UI renders every dropdown
 field (treatment type, outcome result, the 0–10 RPE field) as a real form
 control, so there's no separate UI to build for this step. The three POSTs
-mirror the real workflow: `POST /treatments` targets an open injury (see
-`GET /injuries/open`) and a physio (`GET /physios`); `POST /rehab-sessions`
-follows an open treatment (`GET /treatments/open`); `POST /outcomes`
-closes out an open rehab session (`GET /rehab-sessions/open`). Each POST
+mirror the real workflow: `POST /api/treatments` targets an open injury (see
+`GET /api/injuries/open`) and a physio (`GET /api/physios`); `POST /api/rehab-sessions`
+follows an open treatment (`GET /api/treatments/open`); `POST /api/outcomes`
+closes out an open rehab session (`GET /api/rehab-sessions/open`). Each POST
 checks its referenced ids exist first (404, not a silently-empty write),
 and Pydantic rejects a bad payload (wrong enum, RPE outside 0–10, a rehab
 date before its treatment) with 422 before the database is ever touched.
 
 The seed data already has treatment chains for 17 of the 18 injuries —
-`GET /injuries/open` finds the one that doesn't yet
+`GET /api/injuries/open` finds the one that doesn't yet
 (`injury-athlete14-ankle`, freshly sustained and not yet seen by a
-physio), and `GET /treatments/open` / `GET /rehab-sessions/open` find a
+physio), and `GET /api/treatments/open` / `GET /api/rehab-sessions/open` find a
 few more still mid-pipeline (a treatment with no rehab session logged
 yet, and rehab chains still awaiting their final outcome) to practice
 closing out. Once you have, this is the closed-loop query CLAUDE.md
@@ -360,7 +406,7 @@ a curated starting view. A flagged athlete instead carries the same calm
 halo a `Flag` node gets, directly on itself.
 
 Naively expanding an athlete would pull in a season's worth of `Session`
-and `WellnessEntry` nodes at once, so `GET /graph/expand/{id}` dispatches
+and `WellnessEntry` nodes at once, so `GET /api/graph/expand/{id}` dispatches
 on the clicked node's label to a curated, type-specific query instead:
 clicking an athlete surfaces their injuries, their actual `Flag` nodes
 (now connected straight to the injury each one matched), and only the
@@ -385,7 +431,11 @@ text to take on faith.
 `ingest/ingest_data.py` is the CSV pipeline — unlike the seed script, it
 never wipes anything. It's additive/upsert, meant to run repeatedly (once
 per scheduled export) against a graph that's already live, the way a real
-club's GPS/wellness/medical exports would land over a season.
+club's GPS/wellness/medical exports would land over a season. There's also
+a browser upload page at http://localhost:8000/ingest.html (`POST
+/api/ingest`, once logged in — see "Log in" above) driving the exact same
+`run_ingest()` pipeline underneath, for someone who'd rather drag in files
+than run a CLI command.
 
 ```bash
 python ingest/ingest_data.py \
@@ -423,10 +473,15 @@ independent demonstrations sitting in the same graph.
 ```
 docker-compose.yml       # local Memgraph (memgraph-platform: DB + Lab UI + MAGE algorithms)
 Dockerfile                # bundled Memgraph (bare, no Lab/MAGE) + app image, for the free-tier deploy
-.env.example             # GRAPH_DB_URI / GRAPH_DB_USER / GRAPH_DB_PASSWORD / ANTHROPIC_API_KEY
+.env.example             # GRAPH_DB_URI / GRAPH_DB_USER / GRAPH_DB_PASSWORD / ANTHROPIC_API_KEY /
+                          #   SESSION_SECRET / COOKIE_SECURE
 requirements.txt
 schema/
-  constraints.cypher      # uniqueness constraints + indexes, one per node type (Memgraph DDL)
+  constraints.cypher      # uniqueness constraints + indexes, one per node type (Memgraph DDL) --
+                           #   includes User, the app's own login/auth infrastructure (see auth/)
+auth/
+  users.py                # bcrypt hash/verify, create_user() / get_user_by_id() / verify_password()
+  create_user.py           # CLI entry point — creates one login, prompts for a password (getpass)
 deploy/
   render/README.md        # free-tier deploy: Render + the bundled Dockerfile
   huggingface/README.md    # same Dockerfile on HF Spaces — needs a paid plan there now
@@ -438,8 +493,8 @@ common/
                            #   shared by seed_data.py, ingest_data.py, and the API
 api/
   app.py                   # FastAPI app + routes — physio quick-entry for Treatment/RehabSession/Outcome,
-                            #   flag review (GET /flags/unreviewed, POST /flags/{id}/resolve),
-                            #   graph explorer routes + POST /ask, and the frontend/ static mount
+                            #   flag review (GET /api/flags/unreviewed, POST /api/flags/{id}/resolve),
+                            #   graph explorer routes + POST /api/ask, login routes, and the frontend/ static mount
   schemas.py                # Pydantic request/response models (dropdowns, 0-10 RPE bound, graph node/edge shape)
   reads.py                   # Cypher for the "what's still open" GET endpoints + unreviewed flags
   writes.py                   # Cypher writes, reuses common/db.py
@@ -460,11 +515,15 @@ flagging_agent/
                               #   (named fetch.py, not queries.py — see its own docstring for why)
   agent.py                     # pure computation: per-athlete flag matching against prior signatures
 frontend/
-  index.html               # header (search, ask-in-english), graph canvas, detail panel, legend
-  style.css                 # design tokens (paper/ink/pitch + per-node-type colors), light+dark mode
-  graph.js                   # force-directed render + interactions: drag, pan/zoom, tap-to-select
-  api.js                       # fetch() wrappers for /graph/* and /ask
-  app.js                         # wires load-overview -> click-to-expand -> search -> ask together
+  index.html               # header (search, ask-in-english, filters), graph canvas, detail panel, legend
+  ingest.html                # browser upload page for ingest/ingest_data.py's pipeline (POST /api/ingest)
+  login.html                   # email + password form, POST /api/auth/login
+  style.css                     # design tokens (paper/ink/pitch + per-node-type colors), light+dark mode
+  graph.js                       # force-directed render + interactions: drag, pan/zoom, tap-to-select
+  api.js                           # fetch() wrappers for /api/* -- redirects to login.html on any 401
+  app.js                             # wires load-overview -> click-to-expand -> search -> ask -> filters
+  ingest.js                           # wires the upload form -> POST /api/ingest -> per-source report
+  login.js                             # wires the login form -> POST /api/auth/login -> redirect
 nl_query/
   ask.py                   # ask() is the shared translate -> guard -> execute -> explain pipeline
                             #   (returns a result dict; the CLI's print_result() is the only thing that prints)

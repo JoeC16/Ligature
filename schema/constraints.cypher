@@ -26,6 +26,14 @@ CREATE CONSTRAINT ON (n:Flag) ASSERT n.id IS UNIQUE;
 CREATE CONSTRAINT ON (n:Physio) ASSERT n.id IS UNIQUE;
 CREATE CONSTRAINT ON (n:Outcome) ASSERT n.id IS UNIQUE;
 
+// User isn't part of CLAUDE.md's domain schema -- it's the app's own
+// login/auth infrastructure (see auth/), stored in the same graph rather
+// than standing up a second datastore for one small table. id and email
+// both need to be unique: id is the stable reference every session/API
+// call uses, email is what a person actually logs in with.
+CREATE CONSTRAINT ON (n:User) ASSERT n.id IS UNIQUE;
+CREATE CONSTRAINT ON (n:User) ASSERT n.email IS UNIQUE;
+
 // Range indexes for the time-based lookups the pattern engine and NL
 // query layer do most often (rolling windows, "since date X").
 CREATE INDEX ON :Session(date);

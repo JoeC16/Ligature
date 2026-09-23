@@ -1,9 +1,11 @@
-import { uploadIngest } from "./api.js";
+import { uploadIngest, getMe, logout } from "./api.js";
 
 const form = document.getElementById("ingest-form");
 const submitButton = document.getElementById("ingest-submit");
 const reportEl = document.getElementById("ingest-report");
 const themeToggle = document.getElementById("theme-toggle");
+const userNameEl = document.getElementById("user-name");
+const logoutButton = document.getElementById("logout-button");
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -148,3 +150,26 @@ themeToggle.addEventListener("click", () => {
 });
 
 initTheme();
+
+// --- Auth (logged-in name + logout; also doubles as the "am I logged in"
+// check for this page -- unlike index.html, nothing here calls a
+// protected endpoint until the form is submitted, so without this an
+// unauthenticated visitor could sit on the upload form indefinitely
+// instead of being bounced to login.html right away) ---
+
+getMe()
+  .then((user) => {
+    userNameEl.textContent = user.name;
+  })
+  .catch(() => {
+    // request() is already redirecting to login.html for a 401.
+  });
+
+logoutButton.addEventListener("click", async () => {
+  try {
+    await logout();
+  } catch (err) {
+    console.error("logout failed", err);
+  }
+  location.href = "login.html";
+});
