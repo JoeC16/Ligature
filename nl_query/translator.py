@@ -23,9 +23,15 @@ class CypherTranslation(BaseModel):
 
 
 def translate(client, question: str) -> CypherTranslation:
+    # 4096, not 1024: a question that implies a longer query (multiple
+    # MATCH clauses, an aggregation plus an example row, several id
+    # fields per the schema prompt's own id-inclusion rule) can produce
+    # a Cypher string long enough that a too-tight budget truncates it
+    # mid-string, leaving unterminated JSON Pydantic can't parse -- the
+    # same failure mode already fixed for responder.py's explain() call.
     response = client.messages.parse(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=4096,
         system=SCHEMA_DESCRIPTION,
         messages=[{"role": "user", "content": question}],
         output_format=CypherTranslation,
