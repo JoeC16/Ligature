@@ -201,8 +201,12 @@ matter — so it requires at least two fields to co-deviate on the same day,
 and for wellness, that same field to reappear on multiple flagged days,
 before it counts. `PRECEDED` edges (from the deviating `SessionMetric`,
 never `WellnessEntry` — the schema only puts `SessionMetric` on that side)
-carry `lag_days` and a `correlation_strength` derived from deviation
-magnitude; each injury's full deviating-field set becomes its "signature,"
+carry `lag_days`, a `correlation_strength` derived from deviation
+magnitude, and — so the ask-in-English answer can explain *why*, not just
+*which* — `deviating_fields`/`deviating_zscores`/`baseline_means`/
+`baseline_stds`, parallel arrays naming each elevated field, its z-score,
+and that specific athlete's own baseline mean/std it was compared against
+(never a population or clinical benchmark); each injury's full deviating-field set becomes its "signature,"
 and every pair of injuries gets a `SIMILAR_PATTERN_TO` edge (Jaccard
 overlap of their signatures) once they clear a similarity threshold.
 

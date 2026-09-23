@@ -113,13 +113,17 @@ def _wellness_baseline(baseline_wellness: list[dict]) -> dict[str, tuple[float, 
     return {f: _baseline_stats([w.get(f) for w in baseline_wellness if w.get(f) is not None]) for f in fields}
 
 
-def _deviating_metric_fields(m: dict, baselines: dict[str, tuple[float, float]]) -> dict[str, float]:
+def _deviating_metric_fields(m: dict, baselines: dict[str, tuple[float, float]]) -> dict[str, tuple[float, float, float]]:
+    """{field: (z, baseline_mean, baseline_std)} for fields crossing threshold
+    -- the mean/std travel with the z-score so compute_injury_pattern can
+    persist "this session's value vs. her own baseline" onto the PRECEDED
+    edge, not just the field name and an abstract z."""
     deviating = {}
     for f in METRIC_FIELDS_UP:
         mean, std = baselines.get(f, (0.0, 0.0))
         z = _zscore(m.get(f), mean, std)
         if z is not None and z >= Z_THRESHOLD:  # concerning direction: up
-            deviating[f] = z
+            deviating[f] = (z, mean, std)
     return deviating
 
 
@@ -163,7 +167,7 @@ def compute_signature_at(reference_date: date, athlete_metrics: list[dict], athl
         if len(deviating) < MIN_METRIC_FIELDS:
             continue
         deviating_metric_rows.append((m, deviating))
-        for f, z in deviating.items():
+        for f, (z, _mean, _std) in deviating.items():
             metric_signature.setdefault(f, []).append(z)
 
     # Wellness fields never get their own PRECEDED edge (schema only puts
@@ -195,12 +199,22 @@ def compute_injury_pattern(injury: dict, athlete_metrics: list[dict], athlete_we
     preceded = []
     for m, deviating in result["deviating_metric_rows"]:
         lag_days = (injury_date - _d(m["date"])).days
+        # Sorted once so deviating_fields/zscores/baseline_means/baseline_stds
+        # stay parallel arrays in the same field order -- Memgraph edge
+        # properties are flat lists, not a list of maps, so this is the
+        # traceable-evidence shape: index i across all four lists describes
+        # one deviating field.
+        fields = sorted(deviating.keys())
         preceded.append(
             {
                 "metric_id": m["id"],
                 "injury_id": injury["id"],
                 "lag_days": lag_days,
-                "correlation_strength": _confidence_from_zs([abs(z) for z in deviating.values()]),
+                "correlation_strength": _confidence_from_zs([abs(deviating[f][0]) for f in fields]),
+                "deviating_fields": fields,
+                "deviating_zscores": [round(deviating[f][0], 2) for f in fields],
+                "baseline_means": [round(deviating[f][1], 2) for f in fields],
+                "baseline_stds": [round(deviating[f][2], 2) for f in fields],
             }
         )
 

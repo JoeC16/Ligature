@@ -57,8 +57,15 @@ system produces.
 - `(Session)-[:PRODUCED]->(SessionMetric)`
 - `(Athlete)-[:REPORTED]->(WellnessEntry)`
 - `(Athlete)-[:SUSTAINED]->(Injury)`
-- `(SessionMetric)-[:PRECEDED {lag_days, correlation_strength}]->(Injury)`
-  — **computed by the pattern engine, never manually entered**
+- `(SessionMetric)-[:PRECEDED {lag_days, correlation_strength, deviating_fields,
+  deviating_zscores, baseline_means, baseline_stds}]->(Injury)` —
+  **computed by the pattern engine, never manually entered**. The last four
+  are parallel arrays (same index = same field) carrying *why*: which
+  SessionMetric fields were elevated, by how many standard deviations, and
+  against what baseline — always that specific athlete's own prior
+  sessions, never a population or clinical benchmark, so every "why" the
+  system gives stays inside the "evidence, not prescription" principle
+  above.
 - `(Injury)-[:SIMILAR_PATTERN_TO {shared_metrics, confidence}]->(Injury)`
   — the cross-athlete cluster edge; the core differentiating feature
 - `(Physio)-[:ADMINISTERED]->(Treatment)-[:TARGETS]->(Injury)`
