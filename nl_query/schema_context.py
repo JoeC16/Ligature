@@ -51,6 +51,13 @@ RULES:
 - If the question cannot be answered with this schema (asks for something
   not modeled, or requires a write), do not guess — say so instead of
   producing a best-effort query.
+- Always include the `.id` property of every node your query touches
+  somewhere in the RETURN clause — even when the question only asks for
+  human-readable properties (names, dates, types). The frontend uses these
+  ids to highlight the answer on the graph, so a query that returns e.g. a
+  wellness trend or a protocol comparison should still return the
+  `Athlete.id` / `RehabSession.id` / etc. of every node involved alongside
+  whatever human-readable columns answer the question, not instead of them.
 
 EXAMPLE QUERIES (real queries already used elsewhere against this exact schema):
 
@@ -65,9 +72,10 @@ EXAMPLE QUERIES (real queries already used elsewhere against this exact schema):
 
   # Which treatment protocols preceded a clean return vs. a re-aggravation
   MATCH (t:Treatment)-[:FOLLOWED_BY]->(r:RehabSession)-[:PRODUCED]->(o:Outcome)
-  RETURN r.protocol, o.result, count(*) AS n
+  RETURN t.id AS treatment_id, r.id AS rehab_id, r.protocol, o.result, count(*) AS n
 
   # An athlete's wellness trend
   MATCH (a:Athlete {name: 'Allison Hill'})-[:REPORTED]->(w:WellnessEntry)
-  RETURN w.date, w.sleep_quality, w.hrv, w.soreness ORDER BY w.date
+  RETURN a.id AS athlete_id, w.id AS wellness_id, w.date, w.sleep_quality, w.hrv, w.soreness
+  ORDER BY w.date
 """.strip()
