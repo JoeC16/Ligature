@@ -6,6 +6,13 @@ import {
   askQuestion,
   getUnreviewedFlags,
   resolveFlag,
+  getOpenInjuries,
+  getPhysios,
+  getOpenTreatments,
+  getOpenRehabSessions,
+  createTreatment,
+  createRehabSession,
+  createOutcome,
   getMe,
   logout,
 } from "./api.js";
@@ -42,6 +49,7 @@ const userNameEl = document.getElementById("user-name");
 const logoutButton = document.getElementById("logout-button");
 const flagsButton = document.getElementById("flags-button");
 const flagsBadge = document.getElementById("flags-badge");
+const treatmentButton = document.getElementById("treatment-button");
 
 const MOBILE_QUERY = window.matchMedia("(max-width: 760px)");
 
@@ -356,6 +364,218 @@ async function handleFlagResolve(flagId, resolutionState, cardEl) {
 
 flagsButton.addEventListener("click", () => {
   renderFlagsPanel();
+  openDetailPanel();
+});
+
+// --- Treatment / rehab / outcome logging (CLAUDE.md phase-2 step 5's
+// "simple internal form or API endpoint, not polished UI yet" -- the
+// write routes already existed (api/writes.py), nothing in the frontend
+// called them, so a pilot club could query treatment outcomes on the demo
+// season but had no way to log a real one. Three stacked forms, one per
+// stage of the chain (Treatment -> RehabSession -> Outcome), each only
+// offering entities still missing the next stage -- what the /open
+// endpoints already curate server-side. ---
+
+const TREATMENT_TYPES = ["physio session", "strapping", "massage", "injection", "rest day"];
+const OUTCOME_RESULTS = [
+  { value: "clean_return", label: "Clean return to training" },
+  { value: "re_aggravation", label: "Re-aggravation" },
+];
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function optionsHtml(items, valueKey, labelFn, emptyLabel) {
+  if (items.length === 0) return `<option value="" disabled selected>${escapeHtml(emptyLabel)}</option>`;
+  return (
+    '<option value="" disabled selected>Choose one…</option>' +
+    items.map((item) => `<option value="${escapeHtml(item[valueKey])}">${escapeHtml(labelFn(item))}</option>`).join("")
+  );
+}
+
+async function renderTreatmentPanel() {
+  delete detailBody.dataset.nodeId;
+  detailBody.dataset.mode = "treatment";
+  detailBody.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="badge-row"><span class="micro-mono" style="color:var(--treatment)">Treatment log</span></div>
+        <h2>Log treatment / rehab / outcome</h2>
+      </div>
+    </div>
+    <p class="empty">Loading open injuries, treatments, and rehab sessions…</p>
+  `;
+
+  let openInjuries, physios, openTreatments, openRehabSessions;
+  try {
+    [openInjuries, physios, openTreatments, openRehabSessions] = await Promise.all([
+      getOpenInjuries(),
+      getPhysios(),
+      getOpenTreatments(),
+      getOpenRehabSessions(),
+    ]);
+  } catch (err) {
+    console.error("loading treatment log data failed", err);
+    detailBody.innerHTML += `<p class="empty">Couldn't load — ${escapeHtml(err.message || String(err))}</p>`;
+    return;
+  }
+
+  detailBody.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="badge-row"><span class="micro-mono" style="color:var(--treatment)">Treatment log</span></div>
+        <h2>Log treatment / rehab / outcome</h2>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="section-title">New treatment</div>
+      <div class="section-subtitle">For an injury with nothing logged against it yet.</div>
+      <form id="treatment-form" class="detail-form">
+        <div class="form-field">
+          <label>Injury</label>
+          <select name="injury_id" required>${optionsHtml(openInjuries, "id", (i) => `${i.athlete_name} — ${i.type} (${i.date})`, "No open injuries")}</select>
+        </div>
+        <div class="form-field">
+          <label>Physio</label>
+          <select name="physio_id" required>${optionsHtml(physios, "id", (p) => p.name, "No physios on file")}</select>
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select name="type" required>${TREATMENT_TYPES.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}</select>
+        </div>
+        <div class="form-field">
+          <label>Date</label>
+          <input type="date" name="date" value="${todayIso()}" required />
+        </div>
+        <div class="form-field">
+          <label>Notes <span class="form-hint-inline">(optional)</span></label>
+          <textarea name="notes"></textarea>
+        </div>
+        <button type="submit" class="form-submit">Log treatment</button>
+        <div class="form-error hidden"></div>
+      </form>
+    </div>
+
+    <div class="detail-section">
+      <div class="section-title">New rehab session</div>
+      <div class="section-subtitle">For a treatment with no rehab session logged yet.</div>
+      <form id="rehab-form" class="detail-form">
+        <div class="form-field">
+          <label>Treatment</label>
+          <select name="treatment_id" required>${optionsHtml(openTreatments, "id", (t) => `${t.type} — ${t.date} (${t.practitioner})`, "No open treatments")}</select>
+        </div>
+        <div class="form-field">
+          <label>Date</label>
+          <input type="date" name="date" value="${todayIso()}" required />
+        </div>
+        <div class="form-field">
+          <label>Protocol</label>
+          <input type="text" name="protocol" placeholder="e.g. progressive loading — stage 2" required />
+        </div>
+        <div class="form-field">
+          <label>Load prescribed</label>
+          <input type="text" name="load_prescribed" placeholder="e.g. 60% of baseline sprint volume" required />
+        </div>
+        <div class="form-field">
+          <label>RPE reported <span class="form-hint-inline">(0–10)</span></label>
+          <input type="number" name="rpe_reported" min="0" max="10" step="0.5" required />
+        </div>
+        <div class="form-field form-field-checkbox">
+          <label><input type="checkbox" name="completed" checked /> Completed as prescribed</label>
+        </div>
+        <button type="submit" class="form-submit">Log rehab session</button>
+        <div class="form-error hidden"></div>
+      </form>
+    </div>
+
+    <div class="detail-section">
+      <div class="section-title">New outcome</div>
+      <div class="section-subtitle">For a rehab session still awaiting a result — closes the loop.</div>
+      <form id="outcome-form" class="detail-form">
+        <div class="form-field">
+          <label>Rehab session</label>
+          <select name="rehab_session_id" required>${optionsHtml(openRehabSessions, "id", (r) => `${r.protocol} — ${r.date}`, "No open rehab sessions")}</select>
+        </div>
+        <div class="form-field">
+          <label>Result</label>
+          <select name="result" required>${OUTCOME_RESULTS.map((r) => `<option value="${r.value}">${escapeHtml(r.label)}</option>`).join("")}</select>
+        </div>
+        <div class="form-field">
+          <label>Date</label>
+          <input type="date" name="date" value="${todayIso()}" required />
+        </div>
+        <button type="submit" class="form-submit">Log outcome</button>
+        <div class="form-error hidden"></div>
+      </form>
+    </div>
+  `;
+
+  wireTreatmentForm();
+  wireRehabForm();
+  wireOutcomeForm();
+}
+
+async function submitTreatmentForm(form, submitFn, buildPayload) {
+  const submitButton = form.querySelector(".form-submit");
+  const errorEl = form.querySelector(".form-error");
+  errorEl.classList.add("hidden");
+  submitButton.disabled = true;
+  try {
+    await submitFn(buildPayload(new FormData(form)));
+    await renderTreatmentPanel(); // re-fetch all four /open lists so the chain reflects what just happened
+  } catch (err) {
+    console.error("treatment log submit failed", err);
+    errorEl.textContent = err.message || String(err);
+    errorEl.classList.remove("hidden");
+    submitButton.disabled = false;
+  }
+}
+
+function wireTreatmentForm() {
+  const form = document.getElementById("treatment-form");
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    submitTreatmentForm(form, createTreatment, (fd) => ({
+      injury_id: fd.get("injury_id"),
+      physio_id: fd.get("physio_id"),
+      type: fd.get("type"),
+      date: fd.get("date"),
+      notes: fd.get("notes") || null,
+    }));
+  });
+}
+
+function wireRehabForm() {
+  const form = document.getElementById("rehab-form");
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    submitTreatmentForm(form, createRehabSession, (fd) => ({
+      treatment_id: fd.get("treatment_id"),
+      date: fd.get("date"),
+      protocol: fd.get("protocol"),
+      load_prescribed: fd.get("load_prescribed"),
+      rpe_reported: parseFloat(fd.get("rpe_reported")),
+      completed: fd.get("completed") === "on",
+    }));
+  });
+}
+
+function wireOutcomeForm() {
+  const form = document.getElementById("outcome-form");
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    submitTreatmentForm(form, createOutcome, (fd) => ({
+      rehab_session_id: fd.get("rehab_session_id"),
+      result: fd.get("result"),
+      date: fd.get("date"),
+    }));
+  });
+}
+
+treatmentButton.addEventListener("click", () => {
+  renderTreatmentPanel();
   openDetailPanel();
 });
 

@@ -299,6 +299,56 @@ input[type="password"]:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--athlete) 20%, transparent);
 }
 
+/* Same treatment again for the treatment-log forms' date/number/select/
+   textarea fields -- nothing styled these before ingest.html (file inputs
+   only) needed them. */
+input[type="date"],
+input[type="number"],
+select {
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  box-sizing: border-box;
+  resize: vertical;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+input[type="date"]:hover,
+input[type="number"]:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--border-strong);
+}
+
+input[type="date"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--athlete);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--athlete) 20%, transparent);
+}
+
 .search-results {
   position: absolute;
   top: calc(100% + var(--sp-2));
@@ -1278,6 +1328,49 @@ aside.detail-panel {
 }
 
 .flag-card-error.hidden {
+  display: none;
+}
+
+.detail-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.detail-form .form-field label {
+  font-size: 12px;
+}
+
+.form-hint-inline {
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.form-field-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.form-field-checkbox input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+}
+
+.detail-form .form-submit {
+  align-self: stretch;
+  text-align: center;
+}
+
+.form-error {
+  font-size: 11px;
+  color: var(--injury);
+}
+
+.form-error.hidden {
   display: none;
 }
 
