@@ -505,6 +505,31 @@ button.ask-submit {
   display: block;
 }
 
+.flags-button {
+  position: relative;
+}
+
+.flags-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--flag);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+}
+
+.flags-badge.hidden {
+  display: none;
+}
+
 /* --- Answer band (ask-in-English result) ---
    A banner under the header, not buried in the detail panel — so the
    answer stays visible while the matched nodes it highlights are right
@@ -1154,6 +1179,106 @@ aside.detail-panel {
 .match-card .match-desc {
   font-size: 11px;
   color: var(--ink-muted);
+}
+
+.flag-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.flag-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 10px var(--sp-3);
+}
+
+.flag-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.flag-card-athlete {
+  cursor: pointer;
+}
+
+.flag-card-athlete:hover {
+  color: var(--athlete);
+}
+
+.flag-card-desc {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.flag-card-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.flag-card-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--sp-2);
+}
+
+.flag-card-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.flag-action {
+  flex: 1;
+  height: 30px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s var(--ease), transform 0.08s var(--ease);
+}
+
+.flag-action:hover {
+  opacity: 0.85;
+}
+
+.flag-action:active {
+  transform: scale(0.97);
+}
+
+.flag-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.flag-action-actioned {
+  background: var(--athlete);
+  border-color: var(--athlete);
+  color: var(--surface);
+}
+
+.flag-action-dismissed {
+  color: var(--ink-muted);
+}
+
+.flag-card-error {
+  margin-top: var(--sp-2);
+  font-size: 11px;
+  color: var(--injury);
+}
+
+.flag-card-error.hidden {
+  display: none;
 }
 
 .evidence-note {

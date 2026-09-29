@@ -1,4 +1,14 @@
-import { getOverview, expandNode, searchNodes, getNodesByIds, askQuestion, getMe, logout } from "./api.js";
+import {
+  getOverview,
+  expandNode,
+  searchNodes,
+  getNodesByIds,
+  askQuestion,
+  getUnreviewedFlags,
+  resolveFlag,
+  getMe,
+  logout,
+} from "./api.js";
 import { createGraph } from "./graph.js";
 
 const svg = document.getElementById("graph-svg");
@@ -30,6 +40,8 @@ const filterPositions = document.getElementById("filter-positions");
 const filterReset = document.getElementById("filter-reset");
 const userNameEl = document.getElementById("user-name");
 const logoutButton = document.getElementById("logout-button");
+const flagsButton = document.getElementById("flags-button");
+const flagsBadge = document.getElementById("flags-badge");
 
 const MOBILE_QUERY = window.matchMedia("(max-width: 760px)");
 
@@ -86,6 +98,7 @@ function handleEdgeClick(edge) {
 function clearDetailPanel() {
   detailBody.innerHTML = '<p class="empty">Click a node or edge to inspect it.</p>';
   delete detailBody.dataset.nodeId;
+  delete detailBody.dataset.mode;
   graph.highlight([]);
   closeDetailPanel();
 }
@@ -195,6 +208,7 @@ function matchCards(nodeId) {
 
 function renderNodeDetail(node) {
   detailBody.dataset.nodeId = node.id;
+  delete detailBody.dataset.mode;
   const colorVar = labelColorVar(node.label);
   // display_name is computed just to head the SVG label/this heading for
   // labels with nothing else readable (Flag, SessionMetric) -- once it's
@@ -227,6 +241,7 @@ function renderEdgeDetail(edge) {
   const fromName = fromNode ? nodeHeading(fromNode) : edge.from;
   const toName = toNode ? nodeHeading(toNode) : edge.to;
   delete detailBody.dataset.nodeId;
+  delete detailBody.dataset.mode;
   detailBody.innerHTML = `
     <div class="detail-header">
       <div>
@@ -247,6 +262,102 @@ function wireJumpLinks() {
     el.addEventListener("click", () => jumpToNode(el.dataset.jumpId));
   }
 }
+
+// --- Flag review (CLAUDE.md step 6's "resolution state on every flag" --
+// the pattern engine/flagging agent write Flag nodes and the /api/flags
+// endpoints already existed; this is the missing piece that lets a physio
+// actually act on one instead of hitting the API directly). ---
+
+let unreviewedFlags = [];
+
+function updateFlagsBadge() {
+  const n = unreviewedFlags.length;
+  flagsBadge.textContent = String(n);
+  flagsBadge.classList.toggle("hidden", n === 0);
+}
+
+async function loadUnreviewedFlags() {
+  try {
+    unreviewedFlags = await getUnreviewedFlags();
+  } catch (err) {
+    console.error("loading unreviewed flags failed", err);
+    unreviewedFlags = [];
+  }
+  updateFlagsBadge();
+  if (detailBody.dataset.mode === "flags") renderFlagsPanel();
+}
+
+function flagCardHtml(flag) {
+  const crossAthlete = flag.matched_injury_athlete_name !== flag.athlete_name;
+  const matchDesc = crossAthlete
+    ? `Matches ${escapeHtml(flag.matched_injury_type)} pattern — ${escapeHtml(flag.matched_injury_athlete_name)}`
+    : `Matches her own prior ${escapeHtml(flag.matched_injury_type)}`;
+  const shared = (flag.shared_metrics || []).map((m) => `<span class="rel-chip">${escapeHtml(m)}</span>`).join("");
+  return `
+    <div class="flag-card" data-flag-id="${escapeHtml(flag.id)}">
+      <div class="flag-card-head">
+        <span class="flag-card-athlete" data-jump-id="${escapeHtml(flag.athlete_id)}">${escapeHtml(flag.athlete_name)}</span>
+        <span class="match-pct">${Math.round(flag.confidence * 100)}%</span>
+      </div>
+      <div class="flag-card-desc">${matchDesc}</div>
+      <div class="flag-card-date">${escapeHtml(flag.date)}</div>
+      ${shared ? `<div class="flag-card-metrics">${shared}</div>` : ""}
+      <div class="flag-card-actions">
+        <button type="button" class="flag-action flag-action-actioned" data-action="actioned">Mark actioned</button>
+        <button type="button" class="flag-action flag-action-dismissed" data-action="dismissed">Dismiss</button>
+      </div>
+      <div class="flag-card-error hidden"></div>
+    </div>`;
+}
+
+function renderFlagsPanel() {
+  delete detailBody.dataset.nodeId;
+  detailBody.dataset.mode = "flags";
+  const body =
+    unreviewedFlags.length === 0
+      ? '<p class="empty">No unreviewed flags — the athlete pool is clear right now.</p>'
+      : `<div class="flag-cards">${unreviewedFlags.map(flagCardHtml).join("")}</div>`;
+  detailBody.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="badge-row"><span class="micro-mono" style="color:var(--flag)">Flags</span></div>
+        <h2>Unreviewed flags</h2>
+      </div>
+    </div>
+    <div class="detail-section">${EVIDENCE_NOTE}</div>
+    <div class="detail-section">${body}</div>
+  `;
+  wireJumpLinks();
+  for (const card of detailBody.querySelectorAll(".flag-card")) {
+    const flagId = card.dataset.flagId;
+    for (const btn of card.querySelectorAll(".flag-action")) {
+      btn.addEventListener("click", () => handleFlagResolve(flagId, btn.dataset.action, card));
+    }
+  }
+}
+
+async function handleFlagResolve(flagId, resolutionState, cardEl) {
+  const buttons = cardEl.querySelectorAll(".flag-action");
+  const errorEl = cardEl.querySelector(".flag-card-error");
+  errorEl.classList.add("hidden");
+  for (const btn of buttons) btn.disabled = true;
+  try {
+    await resolveFlag(flagId, resolutionState);
+    unreviewedFlags = unreviewedFlags.filter((f) => f.id !== flagId);
+    updateFlagsBadge();
+    renderFlagsPanel();
+  } catch (err) {
+    console.error("resolve flag failed", err);
+    errorEl.textContent = "Couldn't save that — try again.";
+    errorEl.classList.remove("hidden");
+    for (const btn of buttons) btn.disabled = false;
+  }
+}
+
+flagsButton.addEventListener("click", () => {
+  renderFlagsPanel();
+  openDetailPanel();
+});
 
 async function jumpToNode(id) {
   const alreadyLoaded = graph.hasNode(id);
@@ -675,3 +786,5 @@ getOverview()
     graphLoading.classList.add("errored");
     graphLoadingText.textContent = "Couldn't load the graph. Is the API reachable?";
   });
+
+loadUnreviewedFlags(); // independent of the graph load, just populates the header badge

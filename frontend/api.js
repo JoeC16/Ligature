@@ -52,6 +52,18 @@ export function askQuestion(question) {
   });
 }
 
+export function getUnreviewedFlags() {
+  return request("/flags/unreviewed");
+}
+
+export function resolveFlag(flagId, resolutionState, notes) {
+  return request(`/flags/${encodeURIComponent(flagId)}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resolution_state: resolutionState, notes: notes || null }),
+  });
+}
+
 // files: { roster: File, gps: File|null, wellness: File|null, injuries: File|null }.
 // No Content-Type header here on purpose -- the browser sets
 // multipart/form-data with the right boundary itself; setting it manually
