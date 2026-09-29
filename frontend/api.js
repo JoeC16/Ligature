@@ -64,6 +64,43 @@ export function resolveFlag(flagId, resolutionState, notes) {
   });
 }
 
+// --- Treatment / rehab / outcome input (build order step 4 -- the closed
+// loop: without this, questions like "which protocols preceded a clean
+// return" can only ever run against seed data, never a real pilot's own
+// treatment history) ---
+
+export function getOpenInjuries() {
+  return request("/injuries/open");
+}
+
+export function getPhysios() {
+  return request("/physios");
+}
+
+export function getOpenTreatments() {
+  return request("/treatments/open");
+}
+
+export function getOpenRehabSessions() {
+  return request("/rehab-sessions/open");
+}
+
+function postJson(path, body) {
+  return request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function createTreatment(body) {
+  return postJson("/treatments", body);
+}
+
+export function createRehabSession(body) {
+  return postJson("/rehab-sessions", body);
+}
+
+export function createOutcome(body) {
+  return postJson("/outcomes", body);
+}
+
 // files: { roster: File, gps: File|null, wellness: File|null, injuries: File|null }.
 // No Content-Type header here on purpose -- the browser sets
 // multipart/form-data with the right boundary itself; setting it manually
